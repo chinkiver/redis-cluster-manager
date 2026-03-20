@@ -1,5 +1,7 @@
 # Redis Cluster Manager（缓存3×3英雄）
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 企业级Redis集群可视化管理平台，专注于3×3（3主3从）标准架构，支持多服务器组管理、集群快速创建与导入、实时监控、动态参数配置、自动数据备份等完整功能，让Redis集群运维更简单高效。
 
 ## 功能特性
@@ -679,6 +681,10 @@ server {
     }
 }
 ```
+
+## 开源协议
+
+本项目采用 [MIT 协议](LICENSE) 开源，可自由用于商业和非商业用途。
 
 <p align="center">
   <b>Redis Cluster Manager - 让Redis集群管理更简单</b><br>
