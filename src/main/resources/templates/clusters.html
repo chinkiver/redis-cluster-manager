@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('集群管理')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('集群管理')"></header>
+        
+        <div class="content-container">
+            <!-- Action Bar -->
+            <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+                <div>
+                    <p class="text-muted mb-0">管理和监控Redis集群</p>
+                    <small class="text-muted">支持创建新集群或导入已存在的集群</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="/clusters/create" class="btn btn-primary">
+                        <i class="bi bi-plus-lg"></i> 创建集群
+                    </a>
+                    <button class="btn btn-outline-danger" onclick="importCluster()">
+                        <i class="bi bi-box-arrow-in-down"></i> 导入集群
+                    </button>
+                </div>
+            </div>
+
+            <!-- 筛选区域 -->
+            <div class="card mb-4 animate-fade-in">
+                <div class="card-body py-3">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted mb-1">服务器组</label>
+                            <select class="form-select" id="filterServerGroup" style="height: 31px; padding-top: 0.25rem; padding-bottom: 0.25rem;" onchange="onServerGroupChange()">
+                                <option value="">全部服务器组</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted mb-1">集群搜索</label>
+                            <input type="text" class="form-control" id="filterCluster" style="height: 31px; padding-top: 0.25rem; padding-bottom: 0.25rem;"
+                                   placeholder="按名称（模糊）或端口（精确）..." oninput="filterClusters()">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted mb-1 d-block">&nbsp;</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <button class="btn btn-outline-secondary" style="height: 31px; padding-top: 0.25rem; padding-bottom: 0.25rem;" onclick="clearFilters()">
+                                    <i class="bi bi-x-circle"></i> 清除筛选
+                                </button>
+                                <span class="text-muted small" id="filterResultCount"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 集群列表 -->
+            <div id="clustersSection">
+                <h6 class="mb-3 text-muted"><i class="bi bi-grid-3x3-gap"></i> 集群列表</h6>
+                <div class="row g-4" id="clustersContainer">
+                    <!-- 动态加载 -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Import Cluster Modal -->
+    <div class="modal fade" id="importClusterModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-box-arrow-in-down"></i> 导入现有集群</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 步骤1：基本信息 -->
+                    <div id="importStep1">
+                        <!-- 前提条件提醒 -->
+                        <div class="alert alert-warning border-warning border-2">
+                            <h6 class="alert-heading fw-bold mb-2">
+                                <i class="bi bi-exclamation-triangle-fill text-warning"></i> 
+                                导入前提条件（请确认）
+                            </h6>
+                            <ul class="mb-0 ps-3">
+                                <li class="mb-1">
+                                    <strong class="text-danger">集群必须正常运行</strong> - 只有正常服务的集群才能获取集群结构信息
+                                </li>
+                                <li>
+                                    <strong class="text-danger">仅支持3×3架构</strong> - 3主3从，共6个节点
+                                </li>
+                                <li>
+                                    从已录入的服务器组中导入Redis集群。系统将检查服务器组中各台服务器上是否存在指定端口的Redis节点。
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">集群名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="importClusterName" placeholder="例如: Production-Cluster">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">选择服务器组 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="importServerGroup">
+                                <option value="">请选择服务器组...</option>
+                            </select>
+                            <div class="form-text">选择已录入的服务器组，将复用其SSH配置和Redis版本信息</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">端口号 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="importNodePort" placeholder="6037" min="1024" max="65535">
+                            <div class="form-text">集群节点端口号（所有节点使用相同端口）</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Redis密码</label>
+                            <input type="password" class="form-control" id="importPassword" placeholder="无密码请留空">
+                        </div>
+                    </div>
+                    
+                    <!-- 步骤2：检查和导入进度 -->
+                    <div id="importStep2" style="display: none;">
+                        <div class="text-center py-3" id="importLoading">
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <h6>正在检查服务器节点...</h6>
+                        </div>
+                        <div id="importProgress">
+                            <h6 class="mb-3"><i class="bi bi-list-check"></i> 检查结果</h6>
+                            <div class="table-responsive" style="max-height: 300px;">
+                                <table class="table table-sm table-bordered" id="importCheckTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>服务器</th>
+                                            <th>IP</th>
+                                            <th>检查状态</th>
+                                            <th>说明</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="importResult" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="importCancelBtn">取消</button>
+                    <button type="button" class="btn btn-danger" id="importNextBtn" onclick="startImportCheck()">
+                        <i class="bi bi-search"></i> 开始检查
+                    </button>
+                    <button type="button" class="btn btn-primary" id="importConfirmBtn" style="display: none;" onclick="doImportCluster()">
+                        <i class="bi bi-box-arrow-in-down"></i> 确认导入
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="importBackBtn" style="display: none;" onclick="resetImportModal()">
+                        <i class="bi bi-arrow-left"></i> 返回
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Operation Progress Modal -->
+    <div class="modal fade" id="operationProgressModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-gear-wide-connected"></i> <span id="operationProgressTitle">操作</span></h5>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="operationProgressBar" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-1">
+                            <small class="text-muted" id="operationProgressText">准备中...</small>
+                            <small class="text-muted" id="operationProgressPercent">0%</small>
+                        </div>
+                    </div>
+                    <div id="operationSteps" class="list-group list-group-flush border rounded" style="max-height: 300px; overflow-y: auto;">
+                        <!-- 动态生成步骤 -->
+                    </div>
+                </div>
+                <div class="modal-footer" id="operationProgressFooter" style="display: none;">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cluster Nodes Modal -->
+    <div class="modal fade" id="clusterNodesModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-diagram-3"></i> NODES 原始输出</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <pre id="clusterNodesOutput" class="m-0 p-3 bg-dark text-light rounded" style="max-height: 500px; overflow-y: auto; font-size: 0.8125rem; line-height: 1.5;">加载中...</pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cluster Info Modal -->
+    <div class="modal fade" id="clusterInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-info-circle"></i> INFO 原始输出</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <pre id="clusterInfoOutput" class="m-0 p-3 bg-dark text-light rounded" style="max-height: 500px; overflow-y: auto; font-size: 0.8125rem; line-height: 1.5;">加载中...</pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Cluster Name Modal -->
+    <div class="modal fade" id="editClusterNameModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> 修改集群名称</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editClusterId">
+                    <div class="mb-3">
+                        <label class="form-label">集群名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="editClusterNameInput" placeholder="请输入新的集群名称">
+                        <div class="form-text">名称长度1-100个字符，不能与其他集群重复</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="saveClusterNameBtn" onclick="saveClusterName()">
+                        <i class="bi bi-check"></i> 保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-clusters');
+
+        // 存储所有集群数据，用于筛选
+        let allClusters = [];
+        // 存储所有服务器组
+        let allServerGroups = [];
+        // 当前选中的服务器组ID
+        let currentServerGroupId = '';
+        // 分页相关
+        let currentPage = 1;
+        const pageSize = 6; // 每页6个集群
+
+        // 加载服务器组列表
+        async function loadServerGroups() {
+            try {
+                const response = await axios.get('/api/groups');
+                if (response.data.code === 200) {
+                    allServerGroups = response.data.data || [];
+                    renderServerGroupOptions();
+                    
+                    // 默认选中"默认服务器组"如果存在
+                    const defaultGroup = allServerGroups.find(g => g.name === '默认服务器组');
+                    if (defaultGroup) {
+                        currentServerGroupId = defaultGroup.id.toString();
+                        document.getElementById('filterServerGroup').value = currentServerGroupId;
+                    }
+                    
+                    // 加载完服务器组后加载集群
+                    loadClusters();
+                }
+            } catch (error) {
+                console.error('加载服务器组失败:', error);
+                loadClusters(); // 即使加载服务器组失败也加载集群
+            }
+        }
+
+        // 渲染服务器组下拉选项
+        function renderServerGroupOptions() {
+            const select = document.getElementById('filterServerGroup');
+            select.innerHTML = '<option value="">全部服务器组</option>' +
+                allServerGroups.map(g => `<option value="${g.id}">${g.name} (${g.servers ? g.servers.length : 0}台)</option>`).join('');
+            
+            // 如果有当前选中的值，保持选中
+            if (currentServerGroupId) {
+                select.value = currentServerGroupId;
+            }
+        }
+
+        // 服务器组变更处理
+        function onServerGroupChange() {
+            currentServerGroupId = document.getElementById('filterServerGroup').value;
+            currentPage = 1; // 切换服务器组时重置到第一页
+            filterClusters();
+        }
+
+        // 加载集群
+        async function loadClusters() {
+            try {
+                const response = await axios.get('/api/clusters');
+                if (response.data.code === 200) {
+                    allClusters = response.data.data || [];
+                    filterClusters();
+                }
+            } catch (error) {
+                showToast('加载数据失败', 'error');
+            }
+        }
+
+        // 切换密码显示/隐藏
+        function togglePassword(clusterId) {
+            const pwdSpan = document.getElementById(`pwd-${clusterId}`);
+            const pwdBtn = document.getElementById(`pwd-btn-${clusterId}`);
+            const pwdIcon = pwdBtn.querySelector('i');
+            const actualPassword = pwdBtn.dataset.password;
+            
+            if (pwdSpan.textContent === '***') {
+                // 显示明文密码
+                pwdSpan.textContent = actualPassword || '无密码';
+                pwdIcon.className = 'bi bi-eye-slash';
+                pwdBtn.title = '隐藏密码';
+            } else {
+                // 隐藏密码
+                pwdSpan.textContent = '***';
+                pwdIcon.className = 'bi bi-eye';
+                pwdBtn.title = '查看密码';
+            }
+        }
+
+        // 筛选集群
+        function filterClusters() {
+            const filterText = document.getElementById('filterCluster').value.trim().toLowerCase();
+            
+            // 1. 先按服务器组筛选
+            let filtered = allClusters.filter(cluster => {
+                if (!currentServerGroupId) return true; // 全部服务器组
+                return cluster.serverGroupId && cluster.serverGroupId.toString() === currentServerGroupId;
+            });
+            
+            // 2. 再按关键词筛选
+            if (filterText) {
+                filtered = filtered.filter(cluster => {
+                    // 名称模糊匹配
+                    const nameMatch = cluster.name && cluster.name.toLowerCase().includes(filterText);
+                    // 端口精确匹配（如果输入的是纯数字）
+                    const portMatch = cluster.basePort && cluster.basePort.toString() === filterText;
+                    
+                    return nameMatch || portMatch;
+                });
+            }
+            
+            // 更新筛选结果计数
+            const resultCountEl = document.getElementById('filterResultCount');
+            const groupName = currentServerGroupId 
+                ? (allServerGroups.find(g => g.id.toString() === currentServerGroupId)?.name || '当前组')
+                : '全部';
+            resultCountEl.textContent = `${groupName}: 共 ${filtered.length} 个集群`;
+            
+            // 3. 分页显示
+            renderClustersWithPagination(filtered);
+        }
+
+        // 清除筛选
+        function clearFilters() {
+            document.getElementById('filterCluster').value = '';
+            // 重置到默认服务器组
+            const defaultGroup = allServerGroups.find(g => g.name === '默认服务器组');
+            if (defaultGroup) {
+                currentServerGroupId = defaultGroup.id.toString();
+                document.getElementById('filterServerGroup').value = currentServerGroupId;
+            } else {
+                currentServerGroupId = '';
+                document.getElementById('filterServerGroup').value = '';
+            }
+            currentPage = 1;
+            filterClusters();
+        }
+
+        // 渲染单个集群卡片
+        function renderClusterCard(cluster, index) {
+            let statusBadge = '';
+            let statusColor = '';
+            let actionButtons = '';
+            
+            switch(cluster.status) {
+                case 0: // 创建中
+                    statusBadge = '<span class="badge bg-warning"><span class="spinner-border spinner-border-sm me-1"></span>创建中</span>';
+                    statusColor = '#f59e0b';
+                    actionButtons = `
+                        <button class="btn btn-light btn-sm" disabled>
+                            <span class="spinner-border spinner-border-sm me-1"></span>创建中...
+                        </button>
+                        <div class="btn-group">
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteCluster(${cluster.id})">
+                                <i class="bi bi-trash"></i> 删除
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                                <span class="visually-hidden">Toggle Dropdown</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item text-danger" href="#" onclick="deleteCluster(${cluster.id})"><i class="bi bi-trash me-2"></i>删除集群（停止服务）</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-warning" href="#" onclick="deleteClusterRecordOnly(${cluster.id})"><i class="bi bi-file-earmark-x me-2"></i>仅删除记录</a></li>
+                            </ul>
+                        </div>
+                    `;
+                    break;
+                case 1: // 运行中
+                    statusBadge = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>运行中</span>';
+                    statusColor = '#10b981';
+                    actionButtons = `
+                        <a href="/clusters/${cluster.id}" class="btn btn-primary btn-sm" title="详情">详情</a>
+                        <button class="btn btn-outline-warning btn-sm" onclick="stopCluster(${cluster.id})" title="停止">停止</button>
+                        <div class="btn-group">
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteCluster(${cluster.id})" title="删除">删除</button>
+                            <button class="btn btn-outline-danger btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                                <span class="visually-hidden">Toggle Dropdown</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item text-danger" href="#" onclick="deleteCluster(${cluster.id})"><i class="bi bi-trash me-2"></i>删除集群（停止服务）</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-warning" href="#" onclick="deleteClusterRecordOnly(${cluster.id})"><i class="bi bi-file-earmark-x me-2"></i>仅删除记录</a></li>
+                            </ul>
+                        </div>
+                        <button class="btn btn-outline-info btn-sm" onclick="showClusterNodes(${cluster.id})" title="节点">NODES</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="showClusterInfo(${cluster.id})" title="集群">INFO</button>
+                    `;
+                    break;
+                case 2: // 已停止
+                    statusBadge = '<span class="badge bg-secondary"><i class="bi bi-pause-circle me-1"></i>已停止</span>';
+                    statusColor = '#6c757d';
+                    actionButtons = `
+                        <button class="btn btn-primary btn-sm" disabled title="集群已停止，无法查看详情">详情</button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="startCluster(${cluster.id})" title="启动">启动</button>
+                        <div class="btn-group">
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteCluster(${cluster.id})" title="删除">删除</button>
+                            <button class="btn btn-outline-danger btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                                <span class="visually-hidden">Toggle Dropdown</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item text-danger" href="#" onclick="deleteCluster(${cluster.id})"><i class="bi bi-trash me-2"></i>删除集群（停止服务）</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-warning" href="#" onclick="deleteClusterRecordOnly(${cluster.id})"><i class="bi bi-file-earmark-x me-2"></i>仅删除记录</a></li>
+                            </ul>
+                        </div>
+                        <button class="btn btn-outline-info btn-sm" onclick="showClusterNodes(${cluster.id})" title="节点">NODES</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="showClusterInfo(${cluster.id})" title="集群">INFO</button>
+                    `;
+                    break;
+                case 3: // 异常
+                    statusBadge = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>异常</span>';
+                    statusColor = '#ef4444';
+                    actionButtons = `
+                        <button class="btn btn-primary btn-sm" disabled title="集群异常，无法查看详情">详情</button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="restartCluster(${cluster.id})" title="重启">重启</button>
+                        <div class="btn-group">
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteCluster(${cluster.id})" title="删除">删除</button>
+                            <button class="btn btn-outline-danger btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                                <span class="visually-hidden">Toggle Dropdown</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item text-danger" href="#" onclick="deleteCluster(${cluster.id})"><i class="bi bi-trash me-2"></i>删除集群（停止服务）</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-warning" href="#" onclick="deleteClusterRecordOnly(${cluster.id})"><i class="bi bi-file-earmark-x me-2"></i>仅删除记录</a></li>
+                            </ul>
+                        </div>
+                        <button class="btn btn-outline-info btn-sm" onclick="showClusterNodes(${cluster.id})" title="节点">NODES</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="showClusterInfo(${cluster.id})" title="集群">INFO</button>
+                    `;
+                    break;
+            }
+
+            // 集群类型标签
+            const typeBadge = cluster.clusterType === 1 ? 
+                '<span class="badge bg-danger"><i class="bi bi-download me-1"></i>导入</span>' : 
+                '<span class="badge bg-primary"><i class="bi bi-hdd-rack me-1"></i>创建</span>';
+            
+            return `
+                <div class="col-md-6 col-lg-4 animate-fade-in" style="animation-delay: ${index * 0.1}s;">
+                    <div class="card h-100" style="border-top: 4px solid ${statusColor};">
+                        <div class="card-header">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-hdd-stack" style="color: ${statusColor};"></i>
+                                <span class="fw-semibold" id="cluster-name-${cluster.id}">${cluster.name}</span>
+                                <button class="btn btn-link btn-sm p-0 text-muted" onclick="editClusterName(${cluster.id}, '${cluster.name.replace(/'/g, "\\'")}')" title="修改名称">
+                                    <i class="bi bi-pencil-square" style="font-size: 0.75rem;"></i>
+                                </button>
+                            </div>
+                            <div class="d-flex gap-1">
+                                ${typeBadge}
+                                ${statusBadge}
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <div class="p-2 bg-light rounded text-center">
+                                        <small class="text-muted d-block">Redis版本</small>
+                                        <span class="fw-medium">${cluster.redisVersion || '-'}</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="p-2 bg-light rounded text-center">
+                                        <small class="text-muted d-block">统一端口</small>
+                                        <span class="fw-medium">${cluster.basePort || '-'}</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="p-2 bg-light rounded text-center">
+                                        <small class="text-muted d-block">服务器组名称</small>
+                                        <span class="fw-medium">${cluster.clusterType === 1 ? '外部导入' : (cluster.serverGroupName || '服务器组')}</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="p-2 bg-light rounded text-center">
+                                        <small class="text-muted d-block">集群密码</small>
+                                        <div class="d-flex align-items-center justify-content-center gap-1">
+                                            <span class="fw-medium" id="pwd-${cluster.id}">***</span>
+                                            <button class="btn btn-link btn-sm p-0 text-primary" id="pwd-btn-${cluster.id}" 
+                                                    data-password="${cluster.password ? cluster.password.replace(/"/g, '&quot;') : ''}" 
+                                                    onclick="togglePassword(${cluster.id})" title="查看密码">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                ${actionButtons}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 渲染带分页的集群
+        function renderClustersWithPagination(clusters) {
+            const container = document.getElementById('clustersContainer');
+            const hasFilters = document.getElementById('filterCluster').value.trim();
+            
+            if (clusters.length === 0) {
+                renderEmptyState(container, hasFilters);
+                renderPagination(0, 0);
+                return;
+            }
+            
+            // 计算分页
+            const totalPages = Math.ceil(clusters.length / pageSize);
+            // 确保当前页不超出范围
+            currentPage = Math.min(currentPage, totalPages);
+            currentPage = Math.max(currentPage, 1);
+            
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            const pageClusters = clusters.slice(startIndex, endIndex);
+            
+            container.innerHTML = pageClusters.map((cluster, index) => renderClusterCard(cluster, startIndex + index)).join('');
+            
+            // 渲染分页控件
+            renderPagination(clusters.length, totalPages);
+        }
+        
+        // 渲染空状态
+        function renderEmptyState(container, hasFilters) {
+            if (hasFilters || currentServerGroupId) {
+                // 筛选结果为空
+                container.innerHTML = `
+                    <div class="col-12">
+                        <div class="empty-state py-4">
+                            <div class="empty-state-icon" style="background: linear-gradient(135deg, #e2e3fe, #f2f2ff);">
+                                <i class="bi bi-funnel" style="color: var(--secondary);"></i>
+                            </div>
+                            <h5>未找到匹配的集群</h5>
+                            <p class="text-muted mb-3">请调整筛选条件或清除筛选</p>
+                            <button class="btn btn-outline-secondary" onclick="clearFilters()">
+                                <i class="bi bi-x-circle"></i> 清除筛选
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // 无任何集群
+                container.innerHTML = `
+                    <div class="col-12">
+                        <div class="empty-state py-4">
+                            <div class="empty-state-icon" style="background: linear-gradient(135deg, #fee2e2, #fef2f2);">
+                                <i class="bi bi-grid-3x3-gap" style="color: var(--primary);"></i>
+                            </div>
+                            <h5>暂无集群</h5>
+                            <p class="text-muted mb-3">创建新集群或导入已存在的集群开始管理</p>
+                            <div class="d-flex gap-2 justify-content-center">
+                                <a href="/clusters/create" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 创建集群</a>
+                                <button class="btn btn-outline-danger" onclick="importCluster()"><i class="bi bi-box-arrow-in-down"></i> 导入集群</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // 渲染分页控件
+        function renderPagination(totalItems, totalPages) {
+            // 移除旧的分页
+            const oldPagination = document.getElementById('clustersPagination');
+            if (oldPagination) {
+                oldPagination.remove();
+            }
+            
+            if (totalPages <= 1) {
+                return; // 只有一页不显示分页
+            }
+            
+            const paginationHtml = `
+                <nav id="clustersPagination" class="mt-4 animate-fade-in">
+                    <ul class="pagination justify-content-center">
+                        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                            <a class="page-link" href="javascript:void(0)" onclick="goToPage(${currentPage - 1})">
+                                <i class="bi bi-chevron-left"></i>
+                            </a>
+                        </li>
+                        ${generatePageNumbers(totalPages)}
+                        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                            <a class="page-link" href="javascript:void(0)" onclick="goToPage(${currentPage + 1})">
+                                <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </li>
+                    </ul>
+                    <div class="text-center text-muted small mt-2">
+                        第 ${currentPage} / ${totalPages} 页，共 ${totalItems} 个集群
+                    </div>
+                </nav>
+            `;
+            
+            // 插入到列表容器之后
+            const clustersSection = document.getElementById('clustersSection');
+            clustersSection.insertAdjacentHTML('beforeend', paginationHtml);
+        }
+        
+        // 生成页码按钮
+        function generatePageNumbers(totalPages) {
+            let pages = [];
+            const maxVisible = 5; // 最多显示5个页码
+            
+            let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let end = Math.min(totalPages, start + maxVisible - 1);
+            
+            if (end - start + 1 < maxVisible) {
+                start = Math.max(1, end - maxVisible + 1);
+            }
+            
+            if (start > 1) {
+                pages.push(`<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToPage(1)">1</a></li>`);
+                if (start > 2) {
+                    pages.push(`<li class="page-item disabled"><span class="page-link">...</span></li>`);
+                }
+            }
+            
+            for (let i = start; i <= end; i++) {
+                pages.push(`<li class="page-item ${i === currentPage ? 'active' : ''}">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToPage(${i})">${i}</a>
+                </li>`);
+            }
+            
+            if (end < totalPages) {
+                if (end < totalPages - 1) {
+                    pages.push(`<li class="page-item disabled"><span class="page-link">...</span></li>`);
+                }
+                pages.push(`<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToPage(${totalPages})">${totalPages}</a></li>`);
+            }
+            
+            return pages.join('');
+        }
+        
+        // 切换页码
+        function goToPage(page) {
+            currentPage = page;
+            filterClusters();
+            // 滚动到页面顶部
+            document.getElementById('clustersSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // 删除集群
+        async function deleteCluster(clusterId) {
+            confirmAction('确定要删除这个集群吗？<br><br><strong>执行步骤：</strong><br>1. 停止所有节点的Redis服务<br>2. 删除管理系统中的集群记录<br><br><span class="text-info"><i class="bi bi-info-circle"></i> 服务器上的配置文件和日志文件将保留</span>', async () => {
+                // 显示进度弹窗
+                initOperationProgressModal('删除集群');
+                const modal = new bootstrap.Modal(document.getElementById('operationProgressModal'));
+                modal.show();
+                
+                try {
+                    const response = await axios.delete(`/api/clusters/${clusterId}`);
+                    if (response.data.code === 200) {
+                        const operationId = response.data.data.operationId;
+                        startOperationProgressPolling(operationId, clusterId, true);
+                    } else {
+                        modal.hide();
+                        showToast(response.data.message, 'error');
+                    }
+                } catch (error) {
+                    modal.hide();
+                    showToast(error.response?.data?.message || '删除任务启动失败', 'error');
+                }
+            }, '<i class="bi bi-trash text-danger"></i> 删除集群', '确认删除', 'btn-danger');
+        }
+
+        // 仅删除集群记录（不停止服务）
+        async function deleteClusterRecordOnly(clusterId) {
+            confirmAction(
+                '<div class="text-warning"><i class="bi bi-file-earmark-x fs-1"></i></div>' +
+                '<div class="mt-2">确定要仅删除此集群的记录吗？</div>' +
+                '<div class="alert alert-warning mt-3 mb-0 text-start">' +
+                '<i class="bi bi-exclamation-triangle-fill"></i> ' +
+                '<strong>注意：</strong>此操作仅删除系统中的记录，服务器上的Redis集群服务将继续运行。' +
+                '</div>',
+                async function() {
+                    try {
+                        const response = await axios.delete(`/api/clusters/${clusterId}/record-only`);
+                        if (response.data.code === 200) {
+                            showToast('集群记录已删除', 'success');
+                            loadClusters();
+                        } else {
+                            showToast(response.data.message, 'error');
+                        }
+                    } catch (error) {
+                        showToast(error.response?.data?.message || '删除失败', 'error');
+                    }
+                },
+                '<i class="bi bi-file-earmark-x text-warning"></i> 仅删除记录',
+                '确认删除',
+                'btn-warning'
+            );
+        }
+
+        // 操作进度轮询
+        let operationProgressInterval = null;
+
+        function initOperationProgressModal(title) {
+            document.getElementById('operationProgressTitle').textContent = title;
+            document.getElementById('operationProgressBar').style.width = '0%';
+            document.getElementById('operationProgressText').textContent = '准备中...';
+            document.getElementById('operationProgressPercent').textContent = '0%';
+            document.getElementById('operationSteps').innerHTML = '';
+            document.getElementById('operationProgressFooter').style.display = 'none';
+        }
+
+        function updateOperationStep(stepNum, name, status, message) {
+            const stepsContainer = document.getElementById('operationSteps');
+            let stepEl = document.getElementById(`op_step_${stepNum}`);
+            
+            if (!stepEl) {
+                stepEl = document.createElement('div');
+                stepEl.id = `op_step_${stepNum}`;
+                stepEl.className = 'list-group-item d-flex align-items-center py-2';
+                stepEl.innerHTML = `
+                    <div class="step-number me-3" style="width: 28px; height: 28px; border-radius: 50%; 
+                         background: #e9ecef; color: #6c757d; display: flex; align-items: center; 
+                         justify-content: center; font-size: 0.85rem; font-weight: 500;">
+                        ${stepNum}
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="step-name">${name}</div>
+                        <div class="step-status small text-muted">等待中...</div>
+                    </div>
+                    <div class="step-icon">
+                        <i class="bi bi-circle text-muted"></i>
+                    </div>
+                `;
+                stepsContainer.appendChild(stepEl);
+            }
+            
+            const numberEl = stepEl.querySelector('.step-number');
+            const statusEl = stepEl.querySelector('.step-status');
+            const iconEl = stepEl.querySelector('.step-icon i');
+            
+            if (status === 'running') {
+                numberEl.style.background = '#0d6efd';
+                numberEl.style.color = '#fff';
+                statusEl.textContent = message || '执行中...';
+                statusEl.className = 'step-status small text-primary';
+                iconEl.className = 'bi bi-arrow-repeat spin';
+            } else if (status === 'success') {
+                numberEl.style.background = '#198754';
+                numberEl.style.color = '#fff';
+                numberEl.innerHTML = '<i class="bi bi-check"></i>';
+                statusEl.textContent = message || '已完成';
+                statusEl.className = 'step-status small text-success';
+                iconEl.className = 'bi bi-check-circle-fill text-success';
+            } else if (status === 'warning') {
+                numberEl.style.background = '#f59e0b';
+                numberEl.style.color = '#fff';
+                numberEl.innerHTML = '<i class="bi bi-exclamation"></i>';
+                statusEl.textContent = message || '已跳过';
+                statusEl.className = 'step-status small text-warning';
+                iconEl.className = 'bi bi-exclamation-circle-fill text-warning';
+            } else if (status === 'error') {
+                numberEl.style.background = '#dc3545';
+                numberEl.style.color = '#fff';
+                numberEl.innerHTML = '<i class="bi bi-x"></i>';
+                statusEl.textContent = message || '失败';
+                statusEl.className = 'step-status small text-danger';
+                iconEl.className = 'bi bi-x-circle-fill text-danger';
+            }
+        }
+
+        async function startOperationProgressPolling(operationId, clusterId, isDelete = false) {
+            let completed = false;
+            let errorCount = 0;
+            const maxErrors = 3; // 最多允许连续3次获取进度失败
+            
+            operationProgressInterval = setInterval(async () => {
+                try {
+                    const response = await axios.get(`/api/clusters/operation/${operationId}/progress`);
+                    
+                    // 检查响应是否成功
+                    if (response.data.code !== 200) {
+                        errorCount++;
+                        console.warn('获取进度失败:', response.data.message);
+                        
+                        if (errorCount >= maxErrors) {
+                            completed = true;
+                            clearInterval(operationProgressInterval);
+                            document.getElementById('operationProgressBar').className = 'progress-bar bg-danger';
+                            document.getElementById('operationProgressText').textContent = '获取进度失败';
+                            document.getElementById('operationProgressFooter').style.display = 'block';
+                            showToast(response.data.message || '获取进度失败，请刷新页面重试', 'error');
+                        }
+                        return;
+                    }
+                    
+                    errorCount = 0; // 重置错误计数
+                    const progress = response.data.data;
+                    
+                    if (!progress) return;
+                    
+                    // 计算进度百分比
+                    const currentStep = progress.currentStep || 0;
+                    const totalSteps = progress.totalSteps || 6;
+                    const percent = Math.round((currentStep / totalSteps) * 100);
+                    document.getElementById('operationProgressBar').style.width = `${percent}%`;
+                    document.getElementById('operationProgressPercent').textContent = `${percent}%`;
+                    
+                    // 更新步骤状态
+                    if (progress.steps && Array.isArray(progress.steps)) {
+                        progress.steps.forEach(step => {
+                            updateOperationStep(step.step, step.name, step.status, step.message);
+                        });
+                        
+                        // 更新当前状态文本
+                        const runningStep = progress.steps.find(s => s.status === 'running');
+                        if (runningStep) {
+                            document.getElementById('operationProgressText').textContent = runningStep.name;
+                        }
+                    }
+                    
+                    // 检查是否完成
+                    if (progress.status === 'completed') {
+                        completed = true;
+                        clearInterval(operationProgressInterval);
+                        document.getElementById('operationProgressBar').className = 'progress-bar bg-success';
+                        document.getElementById('operationProgressBar').style.width = '100%';
+                        document.getElementById('operationProgressText').textContent = isDelete ? '删除成功！' : '操作成功！';
+                        document.getElementById('operationProgressPercent').textContent = '100%';
+                        document.getElementById('operationProgressFooter').style.display = 'block';
+                        showToast(isDelete ? '集群删除成功！' : '操作成功！', 'success');
+                        loadClusters();
+                    } else if (progress.status === 'completed_with_errors') {
+                        // 完成但存在错误（部分节点停止失败）
+                        completed = true;
+                        clearInterval(operationProgressInterval);
+                        document.getElementById('operationProgressBar').className = 'progress-bar bg-warning';
+                        document.getElementById('operationProgressBar').style.width = '100%';
+                        document.getElementById('operationProgressText').textContent = '删除完成（部分节点停止失败）';
+                        document.getElementById('operationProgressPercent').textContent = '100%';
+                        document.getElementById('operationProgressFooter').style.display = 'block';
+                        showToast(progress.message || '删除完成，但部分节点停止失败', 'warning');
+                        loadClusters();
+                    } else if (progress.status === 'failed' || progress.status === 'error') {
+                        completed = true;
+                        clearInterval(operationProgressInterval);
+                        document.getElementById('operationProgressBar').className = 'progress-bar bg-danger';
+                        document.getElementById('operationProgressText').textContent = isDelete ? '删除失败' : '操作失败';
+                        document.getElementById('operationProgressFooter').style.display = 'block';
+                        showToast(progress.error || (isDelete ? '删除失败' : '操作失败'), 'error');
+                    }
+                } catch (error) {
+                    console.error('获取进度失败:', error);
+                }
+            }, 1000);
+        }
+
+        // 启动集群
+        async function startCluster(clusterId) {
+            confirmAction('确定要启动集群吗？', async () => {
+                // 显示进度弹窗
+                initOperationProgressModal('启动集群');
+                const modal = new bootstrap.Modal(document.getElementById('operationProgressModal'));
+                modal.show();
+                
+                try {
+                    const response = await axios.post(`/api/clusters/${clusterId}/start`);
+                    if (response.data.code === 200) {
+                        const operationId = response.data.data.operationId;
+                        startOperationProgressPolling(operationId, clusterId);
+                    } else {
+                        modal.hide();
+                        showToast(response.data.message, 'error');
+                    }
+                } catch (error) {
+                    modal.hide();
+                    showToast(error.response?.data?.message || '启动失败', 'error');
+                }
+            });
+        }
+
+        // 停止集群
+        async function stopCluster(clusterId) {
+            confirmAction('确定要停止集群吗？', async () => {
+                // 显示进度弹窗
+                initOperationProgressModal('停止集群');
+                const modal = new bootstrap.Modal(document.getElementById('operationProgressModal'));
+                modal.show();
+                
+                try {
+                    const response = await axios.post(`/api/clusters/${clusterId}/stop`);
+                    if (response.data.code === 200) {
+                        const operationId = response.data.data.operationId;
+                        startOperationProgressPolling(operationId, clusterId);
+                    } else {
+                        modal.hide();
+                        showToast(response.data.message, 'error');
+                    }
+                } catch (error) {
+                    modal.hide();
+                    showToast(error.response?.data?.message || '停止失败', 'error');
+                }
+            });
+        }
+
+        // 全局变量存储导入检查结果
+        let importCheckResult = null;
+
+        // 加载服务器组列表（用于导入）
+        async function loadServerGroupsForImport() {
+            try {
+                const response = await axios.get('/api/groups');
+                if (response.data.code === 200) {
+                    const groups = response.data.data || [];
+                    const select = document.getElementById('importServerGroup');
+                    select.innerHTML = '<option value="">请选择服务器组...</option>' +
+                        groups.map(g => `<option value="${g.id}" data-servers='${JSON.stringify(g.servers || [])}'>${g.name} (${g.servers ? g.servers.length : 0}台服务器)</option>`).join('');
+                }
+            } catch (error) {
+                console.error('加载服务器组失败:', error);
+            }
+        }
+
+        // 打开导入弹窗
+        function importCluster() {
+            resetImportModal();
+            loadServerGroupsForImport();
+            const modal = new bootstrap.Modal(document.getElementById('importClusterModal'));
+            modal.show();
+        }
+
+        // 重置导入弹窗
+        function resetImportModal() {
+            document.getElementById('importStep1').style.display = 'block';
+            document.getElementById('importStep2').style.display = 'none';
+            document.getElementById('importLoading').style.display = 'block';
+            document.getElementById('importProgress').style.display = 'none';
+            document.getElementById('importCancelBtn').style.display = 'block';
+            document.getElementById('importNextBtn').style.display = 'block';
+            document.getElementById('importConfirmBtn').style.display = 'none';
+            document.getElementById('importBackBtn').style.display = 'none';
+            
+            document.getElementById('importClusterName').value = '';
+            document.getElementById('importServerGroup').value = '';
+            document.getElementById('importNodePort').value = '';
+            document.getElementById('importPassword').value = '';
+            document.getElementById('importCheckTable').querySelector('tbody').innerHTML = '';
+            document.getElementById('importResult').innerHTML = '';
+            
+            importCheckResult = null;
+        }
+
+        // 开始检查服务器节点
+        async function startImportCheck() {
+            const name = document.getElementById('importClusterName').value.trim();
+            const groupId = document.getElementById('importServerGroup').value;
+            const port = parseInt(document.getElementById('importNodePort').value);
+            const password = document.getElementById('importPassword').value;
+
+            if (!name) {
+                showToast('请输入集群名称', 'warning');
+                return;
+            }
+            if (!groupId) {
+                showToast('请选择服务器组', 'warning');
+                return;
+            }
+            if (!port) {
+                showToast('请输入端口号', 'warning');
+                return;
+            }
+
+            // 切换到步骤2
+            document.getElementById('importStep1').style.display = 'none';
+            document.getElementById('importStep2').style.display = 'block';
+            document.getElementById('importNextBtn').style.display = 'none';
+            document.getElementById('importCancelBtn').style.display = 'none';
+
+            try {
+                const response = await axios.post('/api/clusters/import-check', {
+                    name: name,
+                    serverGroupId: parseInt(groupId),
+                    port: port,
+                    password: password
+                });
+
+                document.getElementById('importLoading').style.display = 'none';
+                document.getElementById('importProgress').style.display = 'block';
+
+                if (response.data.code === 200) {
+                    importCheckResult = response.data.data;
+                    renderImportCheckResult(importCheckResult);
+                } else {
+                    document.getElementById('importResult').innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-x-circle"></i> ${response.data.message}
+                        </div>
+                    `;
+                    document.getElementById('importBackBtn').style.display = 'block';
+                }
+            } catch (error) {
+                document.getElementById('importLoading').style.display = 'none';
+                document.getElementById('importProgress').style.display = 'block';
+                document.getElementById('importResult').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-x-circle"></i> 检查失败: ${error.response?.data?.message || error.message}
+                    </div>
+                `;
+                document.getElementById('importBackBtn').style.display = 'block';
+            }
+        }
+
+        // 渲染导入检查结果
+        function renderImportCheckResult(result) {
+            const tbody = document.getElementById('importCheckTable').querySelector('tbody');
+            const checks = result.checks || [];
+            
+            tbody.innerHTML = checks.map(check => {
+                let statusBadge = '';
+                if (check.status === 'success') {
+                    statusBadge = '<span class="badge bg-success">存在</span>';
+                } else if (check.status === 'error') {
+                    statusBadge = '<span class="badge bg-danger">不存在</span>';
+                } else {
+                    statusBadge = '<span class="badge bg-warning">检查失败</span>';
+                }
+                
+                return `
+                    <tr>
+                        <td>${check.serverName}</td>
+                        <td><code>${check.ip}</code></td>
+                        <td>${statusBadge}</td>
+                        <td><small>${check.message}</small></td>
+                    </tr>
+                `;
+            }).join('');
+
+            const resultDiv = document.getElementById('importResult');
+            
+            // 构建详细结果显示
+            let resultHtml = '';
+            
+            // 架构验证结果
+            if (result.architectureValid !== undefined) {
+                if (result.architectureValid) {
+                    resultHtml += `
+                        <div class="alert alert-success mb-2">
+                            <i class="bi bi-check-circle-fill"></i> 
+                            <strong>架构验证通过</strong><br>
+                            <small class="ms-4">${result.message || '集群架构验证通过，运行正常'}</small>
+                        </div>
+                    `;
+                } else {
+                    resultHtml += `
+                        <div class="alert alert-danger mb-2">
+                            <i class="bi bi-x-circle-fill"></i> 
+                            <strong>架构验证失败</strong><br>
+                            <small class="ms-4">${result.message || '集群架构不符合要求'}</small>
+                        </div>
+                    `;
+                }
+            }
+            
+            // 节点检查结果
+            if (result.nodeCount > 0 && !result.architectureValid) {
+                resultHtml += `
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        虽然发现了 ${result.nodeCount} 个节点，但架构验证未通过，无法导入。
+                    </div>
+                `;
+            } else if (result.nodeCount === 0) {
+                resultHtml += `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-x-circle"></i> 未在服务器组中发现任何Redis集群节点。
+                    </div>
+                `;
+            }
+            
+            resultDiv.innerHTML = resultHtml;
+            
+            if (result.canImport) {
+                document.getElementById('importConfirmBtn').style.display = 'block';
+                document.getElementById('importBackBtn').style.display = 'block';
+            } else {
+                document.getElementById('importBackBtn').style.display = 'block';
+            }
+        }
+
+        // 执行导入集群
+        async function doImportCluster() {
+            if (!importCheckResult || !importCheckResult.canImport) {
+                showToast('请先完成检查', 'warning');
+                return;
+            }
+
+            const name = document.getElementById('importClusterName').value.trim();
+            const groupId = document.getElementById('importServerGroup').value;
+            const port = parseInt(document.getElementById('importNodePort').value);
+            const password = document.getElementById('importPassword').value;
+
+            document.getElementById('importConfirmBtn').disabled = true;
+            document.getElementById('importConfirmBtn').innerHTML = '<span class="spinner-border spinner-border-sm"></span> 导入中...';
+
+            try {
+                const response = await axios.post('/api/clusters/import', {
+                    name: name,
+                    serverGroupId: parseInt(groupId),
+                    port: port,
+                    password: password
+                });
+
+                if (response.data.code === 200) {
+                    showToast('集群导入成功', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('importClusterModal')).hide();
+                    loadClusters();
+                } else {
+                    showToast(response.data.message, 'error');
+                    document.getElementById('importResult').innerHTML += `
+                        <div class="alert alert-danger mt-2">
+                            <i class="bi bi-x-circle"></i> 导入失败: ${response.data.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                showToast(error.response?.data?.message || '导入失败', 'error');
+                document.getElementById('importResult').innerHTML += `
+                    <div class="alert alert-danger mt-2">
+                        <i class="bi bi-x-circle"></i> 导入失败: ${error.response?.data?.message || error.message}
+                    </div>
+                `;
+            } finally {
+                document.getElementById('importConfirmBtn').disabled = false;
+                document.getElementById('importConfirmBtn').innerHTML = '<i class="bi bi-box-arrow-in-down"></i> 确认导入';
+            }
+        }
+
+        // 重启集群
+        async function restartCluster(clusterId) {
+            confirmAction('确定要重启集群吗？', async () => {
+                showToast('正在重启集群...', 'info');
+                // 先停止
+                try {
+                    await axios.post(`/api/clusters/${clusterId}/stop`);
+                    // 等待2秒
+                    await new Promise(r => setTimeout(r, 2000));
+                    // 再启动
+                    await startCluster(clusterId);
+                } catch (error) {
+                    showToast('重启失败', 'error');
+                }
+            });
+        }
+
+        // 解析 CLUSTER NODES 返回的数据
+        function parseClusterNodes(data) {
+            if (!data) return [];
+            return data.trim().split('\n')
+                .filter(line => line && !line.startsWith('Warning:')) // 过滤掉 Warning 行
+                .map(line => {
+                const parts = line.split(' ');
+                if (parts.length < 8) return null;
+                
+                const nodeId = parts[0];
+                const address = parts[1];
+                const flags = parts[2];
+                const master = parts[3] === '-' ? '主节点' : parts[3];
+                const linkState = parts[7] === 'connected' ? '<span class="badge bg-success">已连接</span>' : '<span class="badge bg-danger">断开</span>';
+                
+                // 角色判断 - 主节点(当前)使用红色高亮
+                let role = '未知';
+                let roleClass = 'bg-secondary';
+                let rowClass = '';
+                
+                if (flags.includes('master')) {
+                    role = '主节点';
+                    roleClass = 'bg-primary';
+                } else if (flags.includes('slave')) {
+                    role = '从节点';
+                    roleClass = 'bg-secondary';
+                }
+                
+                // 主节点(当前) 使用红色高亮
+                if (flags.includes('myself')) {
+                    role += ' (当前)';
+                    if (flags.includes('master')) {
+                        roleClass = 'bg-danger'; // 主节点(当前)用红色
+                        rowClass = 'table-danger';
+                    } else {
+                        roleClass = 'bg-info';
+                    }
+                }
+                
+                if (flags.includes('fail')) {
+                    role = '故障';
+                    roleClass = 'bg-danger';
+                }
+                if (flags.includes('fail?')) {
+                    role = '疑似故障';
+                    roleClass = 'bg-warning';
+                }
+                
+                // 插槽信息
+                const slots = parts.slice(8).join(' ');
+                
+                return {
+                    nodeId: nodeId.substring(0, 12) + '...',
+                    address: address.replace(/@\d+/, ''),
+                    role: `<span class="badge ${roleClass}">${role}</span>`,
+                    master: master,
+                    linkState: linkState,
+                    slots: slots || '-',
+                    rowClass: rowClass
+                };
+            }).filter(item => item !== null);
+        }
+
+        // 当前显示的原始数据，用于复制功能
+        let currentClusterNodesData = '';
+        let currentClusterInfoData = '';
+
+        // 过滤掉警告行的原始输出
+        function filterWarningLines(rawData) {
+            if (!rawData) return '无数据';
+            return rawData.split('\n')
+                .filter(line => !line.trim().startsWith('Warning:'))
+                .join('\n')
+                .trim();
+        }
+
+        // 显示 CLUSTER NODES 原始输出
+        async function showClusterNodes(clusterId) {
+            const modal = new bootstrap.Modal(document.getElementById('clusterNodesModal'));
+            modal.show();
+            document.getElementById('clusterNodesOutput').textContent = '加载中...';
+            currentClusterNodesData = '';
+            
+            try {
+                const response = await axios.get(`/api/clusters/${clusterId}/nodes`);
+                if (response.data.code === 200) {
+                    const filteredData = filterWarningLines(response.data.data);
+                    document.getElementById('clusterNodesOutput').textContent = filteredData || '无数据';
+                    currentClusterNodesData = filteredData;
+                } else {
+                    document.getElementById('clusterNodesOutput').textContent = `加载失败: ${response.data.message}`;
+                }
+            } catch (error) {
+                document.getElementById('clusterNodesOutput').textContent = `加载失败: ${error.response?.data?.message || error.message}`;
+            }
+        }
+
+        // 复制 CLUSTER NODES 输出
+        function copyClusterNodesOutput() {
+            if (!currentClusterNodesData) {
+                showToast('没有可复制的内容', 'warning');
+                return;
+            }
+            navigator.clipboard.writeText(currentClusterNodesData).then(() => {
+                showToast('已复制到剪贴板', 'success');
+            }).catch(() => {
+                showToast('复制失败', 'error');
+            });
+        }
+
+        // CLUSTER INFO 配置项中文映射
+        const CLUSTER_INFO_LABELS = {
+            'cluster_state': { label: '集群状态', desc: '集群整体运行状态' },
+            'cluster_slots_assigned': { label: '已分配插槽', desc: '已分配给节点的插槽数量' },
+            'cluster_slots_ok': { label: '正常插槽', desc: '状态正常的插槽数量' },
+            'cluster_slots_pfail': { label: '疑似故障插槽', desc: '可能发生故障的插槽' },
+            'cluster_slots_fail': { label: '故障插槽', desc: '已确认故障的插槽' },
+            'cluster_known_nodes': { label: '已知节点数', desc: '集群中所有节点的数量' },
+            'cluster_size': { label: '集群大小', desc: '分配了插槽的主节点数量' },
+            'cluster_current_epoch': { label: '当前配置轮次', desc: '集群的当前配置版本号' },
+            'cluster_my_epoch': { label: '本节点轮次', desc: '当前节点的配置版本号' },
+            'cluster_stats_messages_sent': { label: '发送消息数', desc: '节点间通信发送的消息总数' },
+            'cluster_stats_messages_received': { label: '接收消息数', desc: '节点间通信接收的消息总数' },
+            'cluster_stats_messages_ping_sent': { label: 'Ping发送数', desc: '发送的Ping检测消息数' },
+            'cluster_stats_messages_pong_received': { label: 'Pong接收数', desc: '接收的Pong响应消息数' },
+            'cluster_stats_messages_meet_sent': { label: 'Meet发送数', desc: '发送的Meet消息数(节点加入)' },
+            'cluster_stats_messages_fail_sent': { label: 'Fail通知数', desc: '发送的故障通知消息数' },
+            'cluster_stats_messages_update_sent': { label: '配置更新数', desc: '发送的配置更新消息数' }
+        };
+
+        // 解析 CLUSTER INFO 返回的数据
+        function parseClusterInfo(data) {
+            if (!data) return [];
+            return data.trim().split('\n')
+                .filter(line => line && !line.startsWith('Warning:')) // 过滤掉 Warning 行
+                .map(line => {
+                const colonIndex = line.indexOf(':');
+                if (colonIndex === -1) return null;
+                
+                const key = line.substring(0, colonIndex);
+                let value = line.substring(colonIndex + 1);
+                
+                // 获取中文标签和说明
+                const labelInfo = CLUSTER_INFO_LABELS[key];
+                const displayKey = labelInfo ? labelInfo.label : key;
+                const description = labelInfo ? labelInfo.desc : '';
+                
+                // 根据不同的 key 进行格式化
+                let formattedValue = value;
+                
+                // 状态相关
+                if (key === 'cluster_state') {
+                    formattedValue = value === 'ok' ? '<span class="badge bg-success">正常</span>' : '<span class="badge bg-danger">异常</span>';
+                }
+                // 插槽数量
+                else if (key.includes('slots')) {
+                    formattedValue = `<span class="badge bg-info">${value}</span>`;
+                }
+                // 时间相关
+                else if (key.includes('time') || key.includes('epoch')) {
+                    formattedValue = `<code>${value}</code>`;
+                }
+                // 节点相关
+                else if (key.includes('nodes') || key.includes('messages')) {
+                    formattedValue = `<span class="badge bg-primary">${value}</span>`;
+                }
+                
+                return {
+                    key: displayKey,
+                    description: description,
+                    value: formattedValue,
+                    rawKey: key
+                };
+            }).filter(item => item !== null);
+        }
+
+        // 显示 CLUSTER INFO 原始输出
+        async function showClusterInfo(clusterId) {
+            const modal = new bootstrap.Modal(document.getElementById('clusterInfoModal'));
+            modal.show();
+            document.getElementById('clusterInfoOutput').textContent = '加载中...';
+            currentClusterInfoData = '';
+            
+            try {
+                const response = await axios.get(`/api/clusters/${clusterId}/info`);
+                if (response.data.code === 200) {
+                    const filteredData = filterWarningLines(response.data.data);
+                    document.getElementById('clusterInfoOutput').textContent = filteredData || '无数据';
+                    currentClusterInfoData = filteredData;
+                } else {
+                    document.getElementById('clusterInfoOutput').textContent = `加载失败: ${response.data.message}`;
+                }
+            } catch (error) {
+                document.getElementById('clusterInfoOutput').textContent = `加载失败: ${error.response?.data?.message || error.message}`;
+            }
+        }
+
+        // 复制 CLUSTER INFO 输出
+        function copyClusterInfoOutput() {
+            if (!currentClusterInfoData) {
+                showToast('没有可复制的内容', 'warning');
+                return;
+            }
+            navigator.clipboard.writeText(currentClusterInfoData).then(() => {
+                showToast('已复制到剪贴板', 'success');
+            }).catch(() => {
+                showToast('复制失败', 'error');
+            });
+        }
+
+        // 编辑集群名称
+        function editClusterName(clusterId, currentName) {
+            document.getElementById('editClusterId').value = clusterId;
+            document.getElementById('editClusterNameInput').value = currentName;
+            const modal = new bootstrap.Modal(document.getElementById('editClusterNameModal'));
+            modal.show();
+            // 自动聚焦输入框
+            setTimeout(() => document.getElementById('editClusterNameInput').focus(), 100);
+        }
+
+        // 保存集群名称
+        async function saveClusterName() {
+            const clusterId = document.getElementById('editClusterId').value;
+            const newName = document.getElementById('editClusterNameInput').value.trim();
+            
+            if (!newName) {
+                showToast('集群名称不能为空', 'warning');
+                return;
+            }
+            
+            if (newName.length > 100) {
+                showToast('集群名称长度不能超过100个字符', 'warning');
+                return;
+            }
+            
+            const saveBtn = document.getElementById('saveClusterNameBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中...';
+            
+            try {
+                const response = await axios.put(`/api/clusters/${clusterId}/name`, { name: newName });
+                if (response.data.code === 200) {
+                    showToast('集群名称修改成功', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('editClusterNameModal')).hide();
+                    // 更新本地数据并刷新显示
+                    const cluster = allClusters.find(c => c.id == clusterId);
+                    if (cluster) {
+                        cluster.name = newName;
+                        filterClusters();
+                    }
+                } else {
+                    showToast(response.data.message || '修改失败', 'error');
+                }
+            } catch (error) {
+                showToast(error.response?.data?.message || '修改失败', 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="bi bi-check"></i> 保存';
+            }
+        }
+
+        // 回车键保存
+        document.getElementById('editClusterNameInput')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                saveClusterName();
+            }
+        });
+
+        // 初始化
+        loadServerGroups(); // 先加载服务器组，然后再加载集群
+        
+        // 每10秒刷新一次（只刷新正在创建的集群状态）
+        setInterval(() => {
+            // 检查是否有创建中的集群
+            const creatingClusters = document.querySelectorAll('.badge.bg-warning');
+            if (creatingClusters.length > 0) {
+                loadClusters();
+            }
+        }, 10000);
+    </script>
+</body>
+</html>

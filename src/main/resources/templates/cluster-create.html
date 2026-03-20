@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('创建集群')"></head>
+<style>
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    #createSteps .list-group-item { transition: all 0.3s ease; }
+    #createSteps .list-group-item:hover { background-color: #f8f9fa; }
+    
+    /* 集群拓扑预览样式 */
+    .topology-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 1rem;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px;
+        border: 2px dashed #dee2e6;
+    }
+    .topology-placeholder-icon {
+        font-size: 3.5rem;
+        color: #adb5bd;
+        margin-bottom: 1rem;
+    }
+    .topology-placeholder-text {
+        color: #6c757d;
+        font-size: 0.95rem;
+        margin: 0;
+    }
+    
+    /* 拓扑图容器 */
+    .topology-container {
+        position: relative;
+        height: 480px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 16px;
+        border: 1px solid #dee2e6;
+        overflow: hidden;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    /* 节点样式 */
+    .topology-node {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        z-index: 10;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .topology-node:hover {
+        transform: translate(-50%, -50%) scale(1.08);
+        z-index: 20;
+    }
+    .topology-node:hover .node-circle {
+        box-shadow: 0 8px 24px rgba(220, 56, 44, 0.4);
+    }
+    
+    .node-circle {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
+        border: 4px solid white;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transition: all 0.3s ease;
+        position: relative;
+    }
+    .node-circle.master {
+        background: linear-gradient(135deg, #dc382c 0%, #b92d23 100%);
+    }
+    .node-circle.slave {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    }
+    .node-circle::before {
+        content: '';
+        position: absolute;
+        inset: -4px;
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.3);
+        animation: pulse-ring 2s ease-out infinite;
+    }
+    @keyframes pulse-ring {
+        0% { transform: scale(1); opacity: 1; }
+        100% { transform: scale(1.3); opacity: 0; }
+    }
+    
+    .node-icon {
+        color: white;
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    
+    .node-label {
+        margin-top: 8px;
+        text-align: center;
+    }
+    .node-role {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        display: inline-block;
+    }
+    .node-role.master {
+        background: rgba(220, 56, 44, 0.1);
+        color: #dc382c;
+    }
+    .node-role.slave {
+        background: rgba(108, 117, 125, 0.1);
+        color: #6c757d;
+    }
+    .node-ip {
+        font-size: 0.75rem;
+        color: #495057;
+        font-weight: 500;
+        margin-top: 2px;
+        font-family: 'SF Mono', Monaco, monospace;
+    }
+    .node-port {
+        font-size: 0.7rem;
+        color: #6c757d;
+        margin-top: 1px;
+    }
+    
+    /* 连接线 SVG */
+    .topology-lines {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1;
+    }
+    .topology-lines line {
+        transition: all 0.3s ease;
+    }
+    
+    /* 图例 */
+    .topology-legend {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 12px 16px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        font-size: 0.8rem;
+        z-index: 30;
+        border: 1px solid rgba(0,0,0,0.05);
+    }
+    .topology-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+    }
+    .topology-legend-item:last-child {
+        margin-bottom: 0;
+    }
+    .legend-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .legend-dot.master {
+        background: linear-gradient(135deg, #dc382c 0%, #b92d23 100%);
+    }
+    .legend-dot.slave {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    }
+    
+    /* 说明文字 */
+    .topology-info {
+        position: absolute;
+        bottom: 16px;
+        left: 16px;
+        font-size: 0.75rem;
+        color: #6c757d;
+        z-index: 30;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 10px 14px;
+        border-radius: 10px;
+        backdrop-filter: blur(10px);
+    }
+    .topology-info-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 4px;
+    }
+    .topology-info-item:last-child {
+        margin-bottom: 0;
+    }
+    
+    /* 标题 */
+    .topology-title {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        font-size: 0.85rem;
+        color: #495057;
+        font-weight: 600;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .topology-title i {
+        color: #dc382c;
+    }
+    
+    /* 主从关系标签 */
+    .replication-badge {
+        position: absolute;
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+        color: white;
+        font-size: 0.65rem;
+        padding: 2px 8px;
+        border-radius: 10px;
+        white-space: nowrap;
+        box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+        z-index: 15;
+        font-weight: 500;
+    }
+    
+    /* 节点计数徽章 */
+    .node-count {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        display: flex;
+        gap: 8px;
+        z-index: 30;
+    }
+    .node-count-badge {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border: 1px solid rgba(0,0,0,0.05);
+    }
+    .node-count-badge.master {
+        color: #dc382c;
+    }
+    .node-count-badge.slave {
+        color: #6c757d;
+    }
+</style>
+<body>
+    <!-- 创建集群页面紧凑样式 -->
+    <style>
+        .card-body { padding: 1rem; }
+        .mb-3 { margin-bottom: 0.5rem !important; }
+        .my-4 { margin-top: 1rem !important; margin-bottom: 1rem !important; }
+        .form-label { margin-bottom: 0.25rem; font-size: 0.875rem; }
+        .form-control, .form-select { padding: 0.375rem 0.75rem; min-height: 38px; }
+        .input-group-text { padding: 0.375rem 0.75rem; }
+        .form-text { margin-top: 0.25rem; font-size: 0.75rem; }
+        h6 { margin-bottom: 0.75rem; }
+        .card-header { padding: 0.75rem 1rem; }
+        .card-header h6 { margin-bottom: 0; }
+    </style>
+    
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('创建Redis集群')"></header>
+        
+        <div class="content-container">
+            <form id="createClusterForm" class="animate-fade-in">
+                <div class="row g-4">
+                    <div class="col-12">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6><i class="bi bi-grid-3x3-gap"></i> 集群配置</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <!-- 第一行：服务器组、Redis版本、配置模板 -->
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">选择服务器组 <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="serverGroup" required>
+                                            <option value="">请选择服务器组...</option>
+                                        </select>
+                                        <div class="form-text text-muted">
+                                            <small>只显示已配置至少1台服务器且未创建集群的组</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3 d-none" id="versionInfo">
+                                        <label class="form-label">Redis版本（自动检测）</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="bi bi-gear"></i></span>
+                                            <input type="text" class="form-control" id="detectedVersion" readonly>
+                                        </div>
+                                        <div class="form-text text-muted">
+                                            <small>根据服务器组中检测到的Redis版本自动匹配</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <input type="hidden" id="redisVersion">
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">配置模板 <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="configTemplate" required>
+                                            <option value="">请先选择服务器组...</option>
+                                        </select>
+                                        <div class="form-text text-muted">
+                                            <small>根据检测到的Redis版本自动匹配可用模板</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 第二行：集群名称、集群规格、基础端口 -->
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">集群名称 <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="clusterName" 
+                                               placeholder="例如: Cluster-6037" required>
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">集群规格 <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="clusterSize" required disabled>
+                                            <option value="3" selected>3×3（3主3从）</option>
+                                        </select>
+                                        <div class="form-text text-muted">
+                                            <small>系统仅支持 3×3 集群架构</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">基础端口 <span class="text-danger">*</span></label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="bi bi-ethernet"></i></span>
+                                            <input type="number" class="form-control" id="basePort" 
+                                                   value="6037" min="1024" max="65535" required>
+                                        </div>
+                                        <div class="form-text text-muted">
+                                            <small>每个节点可配置独立端口，默认为基础端口</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 第三行：最大内存、淘汰策略、集群密码 -->
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">最大内存 (MB) <span class="text-danger">*</span></label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="bi bi-memory"></i></span>
+                                            <input type="number" class="form-control" id="maxMemory" 
+                                                   value="4096" min="100" required>
+                                        </div>
+                                        <div class="form-text text-muted">
+                                            <small>每个Redis实例的最大内存限制</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">淘汰策略 <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="maxmemoryPolicy" required>
+                                            <option value="noeviction">noeviction - 不淘汰</option>
+                                            <option value="allkeys-lru" selected>allkeys-lru - 最近最少使用(LRU)</option>
+                                            <option value="volatile-lru">volatile-lru - LRU淘汰(仅TTL)</option>
+                                            <option value="allkeys-random">allkeys-random - 随机淘汰</option>
+                                            <option value="volatile-random">volatile-random - 随机淘汰(仅TTL)</option>
+                                            <option value="volatile-ttl">volatile-ttl - 淘汰即将过期</option>
+                                            <option value="allkeys-lfu">allkeys-lfu - 最少使用频率(LFU)</option>
+                                            <option value="volatile-lfu">volatile-lfu - LFU淘汰(仅TTL)</option>
+                                        </select>
+                                        <div class="form-text text-muted">
+                                            <small><b>LRU</b>: 淘汰最久未使用的 | <b>LFU</b>: 淘汰使用次数最少的</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">集群密码（可选）</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                            <input type="password" class="form-control" id="clusterPassword" 
+                                                   placeholder="不设置请留空">
+                                        </div>
+                                        <div class="form-text text-muted">
+                                            <small>设置后会配置 requirepass 和 masterauth</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 第四行：集群配置目录 -->
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">集群配置目录 <span class="text-muted">（可选）</span></label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="bi bi-folder"></i></span>
+                                            <input type="text" class="form-control" id="clusterConfigDir" 
+                                                   placeholder="/opt/redis-cluster">
+                                        </div>
+                                        <div class="form-text text-muted">
+                                            <small>实际会使用 <code>${DATA_DIR}/${PORT}</code> 作为根目录。如果配置不生效，请到"配置模板"页面点击"刷新模板"</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 节点配置 -->
+                                <div class="card mt-3" id="nodeConfigCard">
+                                    <div class="card-header">
+                                        <h6 class="mb-0"><i class="bi bi-diagram-3"></i> 节点配置</h6>
+                                    </div>
+                                    <div class="card-body p-2">
+                                        <!-- 主从节点配对（每行一对） -->
+                                        <div id="nodePairsContainer">
+                                            <!-- 动态生成主从节点配对（每行一对） -->
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <hr class="my-3">
+                                
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="mb-0"><i class="bi bi-diagram-3"></i> 集群拓扑预览</h6>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="refreshTopologyBtn" onclick="refreshTopologyPreview()">
+                                        <i class="bi bi-arrow-clockwise"></i> 刷新拓扑
+                                    </button>
+                                </div>
+                                <div id="topologyPreview">
+                                    <div class="topology-placeholder">
+                                        <div class="topology-placeholder-icon">
+                                            <i class="bi bi-diagram-3"></i>
+                                        </div>
+                                        <p class="topology-placeholder-text">选择服务器组后预览集群拓扑</p>
+                                    </div>
+                                </div>
+                                
+                                <hr class="my-3">
+                                
+                                <h6 class="mb-2"><i class="bi bi-info-circle"></i> 说明</h6>
+                                <ul class="list-unstyled mb-0 small">
+                                    <li class="mb-1">
+                                        <i class="bi bi-check-circle text-success"></i>
+                                        仅支持 3×3 集群架构（3主3从）
+                                    </li>
+                                    <li class="mb-1">
+                                        <i class="bi bi-check-circle text-success"></i>
+                                        每个节点可配置独立端口
+                                    </li>
+                                    <li class="mb-1">
+                                        <i class="bi bi-check-circle text-success"></i>
+                                        一台服务器可运行多个Redis实例
+                                    </li>
+                                    <li class="mb-1">
+                                        <i class="bi bi-check-circle text-success"></i>
+                                        不同端口可组成多个独立集群
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-primary" id="createBtn">
+                        <i class="bi bi-play-circle"></i> 创建集群
+                    </button>
+                    <a href="/clusters" class="btn btn-light">
+                        <i class="bi bi-x-lg"></i> 取消
+                    </a>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <!-- Config Preview Modal -->
+    <div class="modal fade" id="configPreviewModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-file-earmark-text"></i> 配置文件预览</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-light border mb-3">
+                        <div class="small text-muted">
+                            <div class="mb-1"><strong>模板:</strong> <span id="previewTemplateName">-</span></div>
+                            <div class="mb-1"><strong>Redis版本:</strong> <span id="previewRedisVersion">-</span></div>
+                            <div class="mb-1"><strong>示例节点:</strong> <span id="previewNodeInfo">-</span></div>
+                            <div class="mb-1"><strong>集群配置目录:</strong> <span id="previewClusterConfigDir">-</span></div>
+                            <div class="mb-1"><strong>数据目录:</strong> <span id="previewDataDir">-</span></div>
+                            <div><strong>目录结构:</strong> <span id="previewDirStructure" class="text-primary">-</span></div>
+                        </div>
+                    </div>
+                    <div class="position-relative">
+                        <pre class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"><code id="previewConfigContent" class="text-light" style="background: transparent;">正在加载...</code></pre>
+                        <button class="btn btn-sm btn-light position-absolute top-0 end-0 m-2" onclick="copyConfigContent()">
+                            <i class="bi bi-clipboard"></i> 复制
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Progress Modal -->
+    <div class="modal fade" id="createProgressModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-gear-wide-connected"></i> 正在创建集群</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="createProgressBar" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-1">
+                            <small class="text-muted" id="createProgressText">准备中...</small>
+                            <small class="text-muted" id="createProgressPercent">0%</small>
+                        </div>
+                    </div>
+                    <div id="createSteps" class="list-group list-group-flush border rounded" style="max-height: 300px; overflow-y: auto;">
+                        <!-- 动态生成步骤 -->
+                    </div>
+                </div>
+                <div class="modal-footer" id="createProgressFooter" style="display: none;">
+                    <a href="/clusters" class="btn btn-primary">返回集群列表</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-clusters');
+
+        // 加载可用的服务器组
+        async function loadServerGroups() {
+            try {
+                console.log('[DEBUG] 开始加载服务器组...');
+                const response = await axios.get('/api/groups/available');
+                console.log('[DEBUG] 服务器组API响应:', response.data);
+                
+                const select = document.getElementById('serverGroup');
+                
+                if (response.data.code === 200) {
+                    const groups = response.data.data;
+                    console.log('[DEBUG] 可用服务器组数量:', groups.length);
+                    
+                    if (groups.length === 0) {
+                        select.innerHTML = '<option value="">暂无可用服务器组（需要至少1台服务器）</option>';
+                        console.log('[DEBUG] 没有可用的服务器组');
+                        return;
+                    }
+                    
+                    let html = '<option value="">请选择服务器组...</option>';
+                    groups.forEach(function(g) {
+                        html += '<option value="' + g.id + '" data-servers=\'' + JSON.stringify(g.servers) + '\'>' + g.name + ' (' + g.servers.length + '台服务器)</option>';
+                    });
+                    select.innerHTML = html;
+                    console.log('[DEBUG] 服务器组加载完成');
+                } else {
+                    console.error('[DEBUG] API返回错误:', response.data);
+                    select.innerHTML = '<option value="">加载失败: ' + (response.data.message || '未知错误') + '</option>';
+                }
+            } catch (error) {
+                console.error('[DEBUG] 加载服务器组失败:', error);
+                const select = document.getElementById('serverGroup');
+                select.innerHTML = '<option value="">加载失败，请刷新重试</option>';
+                showToast('加载服务器组失败: ' + (error.message || '网络错误'), 'error');
+            }
+        }
+
+        // 加载配置模板
+        async function loadTemplates() {
+            try {
+                const response = await axios.get('/api/config/templates');
+                if (response.data.code === 200) {
+                    window.templates = response.data.data;
+                }
+            } catch (error) {
+                showToast('加载配置模板失败', 'error');
+            }
+        }
+
+        // 根据版本更新模板选项
+        function updateTemplatesByVersion(version) {
+            const templateSelect = document.getElementById('configTemplate');
+            const versionInput = document.getElementById('redisVersion');
+            const clusterConfigDirInput = document.getElementById('clusterConfigDir');
+            
+            // 保存用户当前选择的模板ID（如果已选择）
+            const currentSelectedTemplateId = templateSelect.value;
+            
+            if (!version) {
+                templateSelect.innerHTML = '<option value="">请先选择服务器组...</option>';
+                versionInput.value = '';
+                return;
+            }
+            
+            // 提取大版本（如 6.2.14 -> 6.x）
+            const majorVersion = version.charAt(0) + '.x';
+            versionInput.value = majorVersion;
+            
+            // 显示检测到的版本
+            document.getElementById('detectedVersion').value = `Redis ${version} (${majorVersion})`;
+            document.getElementById('versionInfo').classList.remove('d-none');
+            
+            if (!window.templates) {
+                templateSelect.innerHTML = '<option value="">加载中...</option>';
+                return;
+            }
+            
+            // 筛选匹配版本的模板
+            const matchedTemplates = window.templates.filter(t => 
+                t.redisVersion === majorVersion || t.redisVersion.startsWith(version.charAt(0))
+            );
+            
+            if (matchedTemplates.length === 0) {
+                templateSelect.innerHTML = `<option value="">暂无匹配 ${majorVersion} 的模板</option>`;
+            } else {
+                // 检查用户当前选择的模板是否仍在匹配列表中
+                const currentTemplateStillValid = currentSelectedTemplateId && 
+                    matchedTemplates.some(t => t.id.toString() === currentSelectedTemplateId);
+                
+                templateSelect.innerHTML = '<option value="">请选择模板...</option>' +
+                    matchedTemplates.map(t => {
+                        // 兼容处理：后端可能返回 clusterConfigDir 或 defaultDataDir
+                        const configDir = t.clusterConfigDir || t.defaultDataDir || '/opt/redis-cluster';
+                        return `<option value="${t.id}" data-default-dir="${configDir}">${t.name}</option>`;
+                    }).join('');
+                
+                // 恢复用户选择
+                if (currentTemplateStillValid) {
+                    templateSelect.value = currentSelectedTemplateId;
+                }
+            }
+        }
+        
+        // 模板选择变化时更新默认集群配置目录
+        document.getElementById('configTemplate').addEventListener('change', function() {
+            if (this.value) {
+                const option = this.options[this.selectedIndex];
+                const defaultDir = option.dataset.defaultDir || '/opt/redis-cluster';
+                const clusterConfigDirInput = document.getElementById('clusterConfigDir');
+                // 只有当用户没有手动输入目录时，才自动填充
+                if (!clusterConfigDirInput.value || clusterConfigDirInput.value === clusterConfigDirInput.placeholder) {
+                    clusterConfigDirInput.value = defaultDir;
+                }
+                clusterConfigDirInput.placeholder = defaultDir;
+            }
+        });
+
+        // 当前选择的服务器组信息
+        let currentServers = [];
+        let currentClusterSize = 3;
+
+        // 更新拓扑预览 - 简化紧凑版本
+        function updateTopologyPreview() {
+            const serverSelect = document.getElementById('serverGroup');
+            if (!serverSelect.value) return;
+            
+            const nodeConfigs = getNodeConfigs();
+            const previewDiv = document.getElementById('topologyPreview');
+            const clusterSize = currentClusterSize;
+            
+            // 检查配置是否完整
+            if (nodeConfigs.masters.length !== clusterSize || nodeConfigs.slaves.length !== clusterSize) {
+                previewDiv.innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
+                        <i class="bi bi-diagram-3" style="font-size: 2.5rem; color: #adb5bd; margin-bottom: 0.5rem;"></i>
+                        <p style="color: #6c757d; font-size: 0.9rem; margin: 0;">配置完${clusterSize}主${clusterSize}从后显示拓扑图</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 根据集群规格生成节点位置（圆形布局）
+            const generatePositions = (count) => {
+                const positions = [];
+                const centerX = 50;
+                const centerY = 50;
+                // 根据集群大小调整半径，6*6时更紧凑
+                const masterRadius = count >= 6 ? 18 : 22;
+                const slaveRadius = count >= 6 ? 34 : 40;
+                
+                for (let i = 0; i < count; i++) {
+                    const angle = (i * 2 * Math.PI / count) - Math.PI / 2;
+                    positions.push({
+                        master: {
+                            top: (centerY + masterRadius * Math.sin(angle)).toFixed(1) + '%',
+                            left: (centerX + masterRadius * Math.cos(angle)).toFixed(1) + '%'
+                        },
+                        slave: {
+                            top: (centerY + slaveRadius * Math.sin(angle)).toFixed(1) + '%',
+                            left: (centerX + slaveRadius * Math.cos(angle)).toFixed(1) + '%'
+                        }
+                    });
+                }
+                return positions;
+            };
+            
+            const positions = generatePositions(clusterSize);
+            
+            // 计算SVG连接线
+            let svgLines = [];
+            
+            // 主节点之间的集群总线连接
+            for (let i = 0; i < clusterSize; i++) {
+                for (let j = i + 1; j < clusterSize; j++) {
+                    svgLines.push(`<line x1="${positions[i].master.left.replace('%','')}" y1="${positions[i].master.top.replace('%','')}" 
+                                  x2="${positions[j].master.left.replace('%','')}" y2="${positions[j].master.top.replace('%','')}" 
+                                  stroke="#dc382c" stroke-width="0.6" stroke-dasharray="3,3" opacity="0.5"/>`);
+                }
+            }
+            
+            // 主从复制连接
+            for (let i = 0; i < clusterSize; i++) {
+                svgLines.push(`<line x1="${positions[i].master.left.replace('%','')}" y1="${positions[i].master.top.replace('%','')}" 
+                              x2="${positions[i].slave.left.replace('%','')}" y2="${positions[i].slave.top.replace('%','')}" 
+                              stroke="#28a745" stroke-width="0.8" opacity="0.6"/>`);
+            }
+            
+            // 简化紧凑的拓扑预览
+            // 根据集群大小动态调整节点大小和容器高度
+            const nodeSize = clusterSize <= 3 ? 40 : (clusterSize >= 6 ? 28 : 32);
+            const fontSize = clusterSize <= 3 ? '0.65rem' : (clusterSize >= 6 ? '0.5rem' : '0.55rem');
+            const ipFontSize = clusterSize <= 3 ? '0.6rem' : (clusterSize >= 6 ? '0.45rem' : '0.5rem');
+            // 根据集群大小调整容器高度和内边距，小集群增加底部空间避免图例遮挡
+            const containerHeight = clusterSize <= 2 ? 360 : (clusterSize >= 6 ? 380 : 320);
+            const topPadding = clusterSize >= 6 ? 35 : 25;
+            const bottomPadding = clusterSize <= 2 ? 45 : 30; // 2*2集群增加底部内边距
+            
+            previewDiv.innerHTML = `
+                <div style="position: relative; height: ${containerHeight}px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; overflow: hidden; padding-top: ${topPadding}px; padding-bottom: ${bottomPadding}px;">
+                    <!-- 标题 -->
+                    <div style="position: absolute; top: 8px; left: 8px; z-index: 10;">
+                        <span style="font-size: 0.75rem; font-weight: 600; color: #495057;">
+                            <i class="bi bi-diagram-3" style="color: #dc382c;"></i> ${clusterSize}主${clusterSize}从
+                        </span>
+                    </div>
+                    
+                    <!-- 连接线 SVG - 调整高度以适应顶部和底部间距 -->
+                    <svg style="position: absolute; top: ${topPadding}px; left: 0; width: 100%; height: calc(100% - ${topPadding}px - ${bottomPadding}px);" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        ${svgLines.join('')}
+                    </svg>
+                    
+                    <!-- 主节点 - 调整top值以适应顶部间距 -->
+                    ${nodeConfigs.masters.map((master, idx) => `
+                        <div style="position: absolute; top: calc(${positions[idx].master.top} + ${topPadding}px); left: ${positions[idx].master.left}; transform: translate(-50%, -50%); text-align: center; z-index: 5;">
+                            <div style="width: ${nodeSize}px; height: ${nodeSize}px; border-radius: 50%; background: linear-gradient(135deg, #dc382c 0%, #b92d23 100%); border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                <span style="color: white; font-size: ${fontSize}; font-weight: bold;">M${idx+1}</span>
+                            </div>
+                            <div style="font-size: ${ipFontSize}; color: #dc382c; margin-top: 2px; font-weight: 600; white-space: nowrap;">${master.ip}:${master.port}</div>
+                        </div>
+                    `).join('')}
+                    
+                    <!-- 从节点 - 调整top值以适应顶部间距 -->
+                    ${nodeConfigs.slaves.map((slave, idx) => `
+                        <div style="position: absolute; top: calc(${positions[idx].slave.top} + ${topPadding}px); left: ${positions[idx].slave.left}; transform: translate(-50%, -50%); text-align: center; z-index: 5;">
+                            <div style="width: ${nodeSize}px; height: ${nodeSize}px; border-radius: 50%; background: linear-gradient(135deg, #6c757d 0%, #495057 100%); border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                <span style="color: white; font-size: ${fontSize}; font-weight: bold;">S${idx+1}</span>
+                            </div>
+                            <div style="font-size: ${ipFontSize}; color: #6c757d; margin-top: 2px; white-space: nowrap;">${slave.ip}:${slave.port}</div>
+                        </div>
+                    `).join('')}
+                    
+                    <!-- 简化图例 -->
+                    <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(255,255,255,0.95); padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+                            <div style="width: 8px; height: 8px; border-radius: 50%; background: #dc382c;"></div>
+                            <span>主</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <div style="width: 8px; height: 8px; border-radius: 50%; background: #6c757d;"></div>
+                            <span>从</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 根据服务器数量更新集群规格选项（固定为 3*3）
+        function updateClusterSizeOptions(serverCount) {
+            // 固定为 3*3 架构，不需要动态更新选项
+            currentClusterSize = 3;
+        }
+        
+        // 集群规格变化时重新生成节点配置
+        function onClusterSizeChange() {
+            const clusterSize = parseInt(document.getElementById('clusterSize').value);
+            if (!clusterSize || !currentServers.length) return;
+            
+            currentClusterSize = clusterSize;
+            
+            // 重新生成节点配置
+            generateNodeConfigs();
+            
+            // 更新拓扑预览
+            updateTopologyPreview();
+        }
+        
+        // 生成节点配置表单
+        // 生成节点配置 - 每行一个节点
+        function generateNodeConfigs() {
+            const container = document.getElementById('nodePairsContainer');
+            const basePort = document.getElementById('basePort').value || '6037';
+            const clusterSize = currentClusterSize;
+            
+            if (!currentServers.length || !clusterSize) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            // 生成主从节点配对（每行一对）
+            let html = '';
+            for (let i = 0; i < clusterSize; i++) {
+                html += generateNodePairRow(i, basePort);
+            }
+            container.innerHTML = html;
+            
+            // 添加节点配置变化监听
+            attachNodeConfigListeners();
+        }
+        
+        // 生成主从节点配对HTML - 同一行显示
+        function generateNodePairRow(index, basePort) {
+            const masterNodeId = `master-${index}`;
+            const slaveNodeId = `slave-${index}`;
+            const masterPort = parseInt(basePort) + index;
+            const slavePort = parseInt(basePort) + index + 100; // 从节点端口 = 基础端口 + 100 + 索引
+            
+            return `
+                <div class="node-pair-row" id="node-pair-${index}" style="
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 8px 10px;
+                    margin-bottom: 8px;
+                    background: #fff;
+                    border: 1px solid rgba(0,0,0,0.08);
+                    border-radius: 8px;
+                    border-left: 4px solid #0d6efd;
+                ">
+                    <!-- 主节点 -->
+                    <div class="master-section" style="flex: 1; display: flex; align-items: center; gap: 6px;">
+                        <span class="badge bg-primary" style="min-width: 42px; font-size: 0.7rem;">主${index + 1}</span>
+                        <select class="form-select form-select-sm node-ip-select" 
+                                data-node-id="${masterNodeId}" data-role="master" data-index="${index}"
+                                style="flex: 1; min-width: 120px;">
+                            ${currentServers.map((s, i) => `
+                                <option value="${i}" data-ip="${s.ip}" ${i === index ? 'selected' : ''}>${s.ip}</option>
+                            `).join('')}
+                        </select>
+                        <input type="number" class="form-control form-control-sm node-port-input" 
+                               id="port-${masterNodeId}"
+                               data-node-id="${masterNodeId}"
+                               data-role="master"
+                               data-index="${index}"
+                               value="${masterPort}" 
+                               min="1024" max="65535" required
+                               style="width: 80px;">
+                        <button type="button" class="btn btn-outline-info btn-sm py-1 px-2" 
+                                onclick="previewNodeConfig('${masterNodeId}', true)"
+                                title="预览主节点配置">
+                            <i class="bi bi-eye" style="font-size: 0.75rem;"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- 主从连接标识 -->
+                    <div style="color: #6c757d; font-size: 0.85rem;">
+                        <i class="bi bi-arrow-left-right"></i>
+                    </div>
+                    
+                    <!-- 从节点 -->
+                    <div class="slave-section" style="flex: 1; display: flex; align-items: center; gap: 6px;">
+                        <span class="badge bg-secondary" style="min-width: 42px; font-size: 0.7rem;">从${index + 1}</span>
+                        <select class="form-select form-select-sm node-ip-select" 
+                                data-node-id="${slaveNodeId}" data-role="slave" data-index="${index}"
+                                style="flex: 1; min-width: 120px;">
+                            ${currentServers.map((s, i) => `
+                                <option value="${i}" data-ip="${s.ip}" ${i === (index + 1) % currentServers.length ? 'selected' : ''}>${s.ip}</option>
+                            `).join('')}
+                        </select>
+                        <input type="number" class="form-control form-control-sm node-port-input" 
+                               id="port-${slaveNodeId}"
+                               data-node-id="${slaveNodeId}"
+                               data-role="slave"
+                               data-index="${index}"
+                               value="${slavePort}" 
+                               min="1024" max="65535" required
+                               style="width: 80px;">
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-1 px-2" 
+                                onclick="previewNodeConfig('${slaveNodeId}', false)"
+                                title="预览从节点配置">
+                            <i class="bi bi-eye" style="font-size: 0.75rem;"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 预览单个节点的配置
+        async function previewNodeConfig(nodeId, isMaster) {
+            const templateId = document.getElementById('configTemplate').value;
+            if (!templateId) {
+                showToast('请先选择配置模板', 'warning');
+                return;
+            }
+            
+            const ipSelect = document.querySelector(`select[data-node-id="${nodeId}"]`);
+            const portInput = document.getElementById(`port-${nodeId}`);
+            if (!ipSelect || !portInput) {
+                showToast('节点配置不存在', 'error');
+                return;
+            }
+            
+            const serverIndex = ipSelect.value;
+            const server = currentServers[serverIndex];
+            const port = portInput.value;
+            
+            if (!server) {
+                showToast('请先选择服务器', 'warning');
+                return;
+            }
+            
+            // 检查是否已有打开的预览弹窗
+            const existingModal = document.getElementById('nodeConfigPreviewModal');
+            const isUpdate = existingModal && existingModal.classList.contains('show');
+            
+            if (!isUpdate) {
+                // 创建新的弹窗
+                const modalHtml = `
+                    <div class="modal fade" id="nodeConfigPreviewModal" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header bg-info text-white">
+                                    <h6 class="modal-title">
+                                        <i class="bi bi-eye"></i> ${isMaster ? '主' : '从'}节点配置预览
+                                        <span class="badge bg-light text-dark ms-2" id="previewModalNodeAddr">${server.ip}:${port}</span>
+                                    </h6>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="small text-muted mb-2" id="previewModalNodeInfo">
+                                        <span class="badge bg-secondary">IP</span> ${server.ip}
+                                        <span class="badge bg-secondary ms-2">端口</span> ${port}
+                                        <span class="badge bg-secondary ms-2">角色</span> ${isMaster ? 'Master' : 'Slave'}
+                                    </div>
+                                    <pre class="bg-dark text-light p-3 rounded mb-0" style="max-height: 400px; overflow-y: auto; font-size: 0.8rem;" id="nodePreviewContent">加载中...</pre>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-info" onclick="refreshCurrentNodeConfig()">
+                                        <i class="bi bi-arrow-clockwise"></i> 刷新配置
+                                    </button>
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // 移除已存在的弹框
+                if (existingModal) {
+                    existingModal.remove();
+                }
+                
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                const modalElement = document.getElementById('nodeConfigPreviewModal');
+                const modal = new bootstrap.Modal(modalElement);
+                
+                // 保存当前活动的节点ID
+                modalElement.dataset.activeNodeId = nodeId;
+                modalElement.dataset.activeIsMaster = isMaster;
+                
+                modal.show();
+            } else {
+                // 更新已有弹窗的节点信息
+                document.getElementById('previewModalNodeAddr').textContent = `${server.ip}:${port}`;
+                document.getElementById('previewModalNodeInfo').innerHTML = `
+                    <span class="badge bg-secondary">IP</span> ${server.ip}
+                    <span class="badge bg-secondary ms-2">端口</span> ${port}
+                    <span class="badge bg-secondary ms-2">角色</span> ${isMaster ? 'Master' : 'Slave'}
+                `;
+                document.getElementById('nodePreviewContent').textContent = '加载中...';
+                
+                // 更新保存的节点ID
+                existingModal.dataset.activeNodeId = nodeId;
+                existingModal.dataset.activeIsMaster = isMaster;
+            }
+            
+            // 加载配置预览
+            try {
+                // 每次都从DOM获取最新值
+                const password = document.getElementById('clusterPassword').value;
+                const maxMemory = document.getElementById('maxMemory').value || '4096';
+                const maxmemoryPolicy = document.getElementById('maxmemoryPolicy').value || 'allkeys-lru';
+                const clusterConfigDir = document.getElementById('clusterConfigDir').value;
+                
+                console.log('[DEBUG] previewNodeConfig 请求参数:');
+                console.log('[DEBUG]   maxMemory:', maxMemory);
+                console.log('[DEBUG]   maxmemoryPolicy:', maxmemoryPolicy);
+                console.log('[DEBUG]   clusterConfigDir:', clusterConfigDir);
+                console.log('[DEBUG]   password:', password ? '已设置' : '未设置');
+                
+                // 添加时间戳参数避免缓存
+                const timestamp = new Date().getTime();
+                
+                const response = await axios.get('/api/clusters/preview-config', {
+                    params: {
+                        templateId: templateId,
+                        ip: server.ip,
+                        port: parseInt(port),
+                        password: password || null,
+                        clusterConfigDir: clusterConfigDir || null,
+                        maxMemory: parseInt(maxMemory),
+                        maxmemoryPolicy: maxmemoryPolicy,
+                        _t: timestamp
+                    }
+                });
+                
+                console.log('[DEBUG] API响应状态:', response.status);
+                console.log('[DEBUG] 响应配置内容长度:', (response.data && response.data.data && response.data.data.configContent) ? response.data.data.configContent.length : 0);
+                console.log('[DEBUG] 响应中的usedClusterConfigDir:', response.data && response.data.data ? response.data.data.usedClusterConfigDir : 'N/A');
+                console.log('[DEBUG] 响应中的exampleDataDir:', response.data && response.data.data ? response.data.data.exampleDataDir : 'N/A');
+                console.log('[DEBUG] 模板原始内容预览:', response.data && response.data.data ? response.data.data.debugTemplatePreview : 'N/A');
+                
+                // 检查配置内容中是否包含maxmemory配置
+                const configContent = (response.data && response.data.data && response.data.data.configContent) ? response.data.data.configContent : '';
+                const maxmemoryMatch = configContent.match(/maxmemory\s+(\d+)/);
+                if (maxmemoryMatch) {
+                    console.log('[DEBUG] 响应配置中的maxmemory值:', maxmemoryMatch[1] + 'MB');
+                } else {
+                    console.log('[DEBUG] 响应配置中未找到maxmemory配置');
+                }
+                
+                const policyMatch = configContent.match(/maxmemory-policy\s+(\S+)/);
+                if (policyMatch) {
+                    console.log('[DEBUG] 响应配置中的maxmemory-policy值:', policyMatch[1]);
+                } else {
+                    console.log('[DEBUG] 响应配置中未找到maxmemory-policy配置');
+                }
+                
+                // 检查配置内容中是否包含目录路径
+                const dirMatches = configContent.match(/dir\s+(\S+)/g);
+                if (dirMatches) {
+                    console.log('[DEBUG] 响应配置中的dir配置:', dirMatches);
+                } else {
+                    console.log('[DEBUG] 响应配置中未找到dir配置');
+                }
+                
+                // 检查配置内容中是否包含日志文件路径
+                const logfileMatch = configContent.match(/logfile\s+(\S+)/);
+                if (logfileMatch) {
+                    console.log('[DEBUG] 响应配置中的logfile值:', logfileMatch[1]);
+                } else {
+                    console.log('[DEBUG] 响应配置中未找到logfile配置');
+                }
+                
+                if (response.data.code === 200) {
+                    document.getElementById('nodePreviewContent').textContent = response.data.data.configContent;
+                } else {
+                    document.getElementById('nodePreviewContent').textContent = '加载失败: ' + response.data.message;
+                }
+            } catch (error) {
+                document.getElementById('nodePreviewContent').textContent = '加载失败: ' + ((error.response && error.response.data && error.response.data.message) ? error.response.data.message : error.message);
+            }
+        }
+        
+        // 收集所有节点配置数据
+        function getNodeConfigs() {
+            const configs = {
+                masters: [],
+                slaves: []
+            };
+            
+            // 收集主节点配置
+            document.querySelectorAll('#nodePairsContainer .master-section .node-ip-select').forEach((select) => {
+                const nodeId = select.dataset.nodeId;
+                const portInput = document.getElementById(`port-${nodeId}`);
+                configs.masters.push({
+                    serverIndex: parseInt(select.value),
+                    ip: select.options[select.selectedIndex].dataset.ip,
+                    port: parseInt(portInput.value)
+                });
+            });
+            
+            // 收集从节点配置
+            document.querySelectorAll('#nodePairsContainer .slave-section .node-ip-select').forEach((select) => {
+                const nodeId = select.dataset.nodeId;
+                const portInput = document.getElementById(`port-${nodeId}`);
+                configs.slaves.push({
+                    serverIndex: parseInt(select.value),
+                    ip: select.options[select.selectedIndex].dataset.ip,
+                    port: parseInt(portInput.value)
+                });
+            });
+            
+            return configs;
+        }
+        
+        // 刷新集群拓扑预览
+        function refreshTopologyPreview() {
+            const groupSelect = document.getElementById('serverGroup');
+            if (groupSelect.value) {
+                updateTopologyPreview();
+                showToast('拓扑图已刷新', 'success');
+            } else {
+                showToast('请先选择服务器组', 'warning');
+            }
+        }
+        
+        // 刷新当前显示的节点配置
+        async function refreshCurrentNodeConfig() {
+            const modal = document.getElementById('nodeConfigPreviewModal');
+            if (!modal || !modal.classList.contains('show')) {
+                showToast('没有打开的配置预览', 'warning');
+                return;
+            }
+            
+            const activeNodeId = modal.dataset.activeNodeId;
+            const isMaster = modal.dataset.activeIsMaster === 'true';
+            
+            if (!activeNodeId) {
+                showToast('没有活动的节点', 'warning');
+                return;
+            }
+            
+            console.log('[DEBUG] 手动刷新节点配置:', activeNodeId);
+            await previewNodeConfig(activeNodeId, isMaster);
+            showToast('配置已刷新', 'success');
+        }
+        
+        // 刷新所有节点配置
+        async function refreshAllNodeConfigs() {
+            const templateId = document.getElementById('configTemplate').value;
+            if (!templateId) {
+                showToast('请先选择配置模板', 'warning');
+                return;
+            }
+            
+            const nodeConfigs = getNodeConfigs();
+            if (nodeConfigs.masters.length === 0) {
+                showToast('没有可刷新的节点配置', 'warning');
+                return;
+            }
+            
+            // 检查是否有打开的预览弹窗
+            const modal = document.getElementById('nodeConfigPreviewModal');
+            if (modal && modal.classList.contains('show')) {
+                // 如果有打开的预览，刷新当前节点
+                await refreshCurrentNodeConfig();
+            } else {
+                showToast('请先打开一个节点的配置预览，再点击刷新', 'info');
+            }
+        }
+        
+        // 校验单个节点对的配置
+        function validateNodePair(index) {
+            const masterIpSelect = document.querySelector(`select[data-node-id="master-${index}"]`);
+            const masterPortInput = document.getElementById(`port-master-${index}`);
+            const slaveIpSelect = document.querySelector(`select[data-node-id="slave-${index}"]`);
+            const slavePortInput = document.getElementById(`port-slave-${index}`);
+            const pairRow = document.getElementById(`node-pair-${index}`);
+            
+            if (!masterIpSelect || !masterPortInput || !slaveIpSelect || !slavePortInput || !pairRow) return;
+            
+            const masterIp = (masterIpSelect.options[masterIpSelect.selectedIndex] && masterIpSelect.options[masterIpSelect.selectedIndex].dataset) ? masterIpSelect.options[masterIpSelect.selectedIndex].dataset.ip : '';
+            const masterPort = masterPortInput.value;
+            const slaveIp = (slaveIpSelect.options[slaveIpSelect.selectedIndex] && slaveIpSelect.options[slaveIpSelect.selectedIndex].dataset) ? slaveIpSelect.options[slaveIpSelect.selectedIndex].dataset.ip : '';
+            const slavePort = slavePortInput.value;
+            
+            // 移除旧的错误样式
+            pairRow.style.borderColor = 'rgba(0,0,0,0.08)';
+            pairRow.style.background = '#fff';
+            pairRow.style.boxShadow = 'none';
+            
+            // 检查同一行内主从是否相同
+            if (masterIp && slaveIp && masterPort && slavePort) {
+                if (masterIp === slaveIp && masterPort === slavePort) {
+                    // 标记错误样式
+                    pairRow.style.borderColor = '#dc3545';
+                    pairRow.style.background = '#fff5f5';
+                    pairRow.style.boxShadow = '0 0 0 2px rgba(220, 53, 69, 0.25)';
+                    
+                    // 显示错误提示
+                    showToast(`第${index + 1}对节点: 主节点和从节点不能使用相同的IP和端口`, 'error');
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        // 校验所有节点配置是否有重复
+        function validateAllNodes() {
+            const configs = getNodeConfigs();
+            const allNodes = [...configs.masters, ...configs.slaves];
+            const seen = new Map();
+            const duplicates = [];
+            
+            for (let i = 0; i < allNodes.length; i++) {
+                const node = allNodes[i];
+                const key = node.ip + ':' + node.port;
+                if (seen.has(key)) {
+                    duplicates.push(key);
+                } else {
+                    seen.set(key, i);
+                }
+            }
+            
+            // 更新所有行的样式
+            for (let i = 0; i < currentClusterSize; i++) {
+                const pairRow = document.getElementById(`node-pair-${i}`);
+                if (pairRow) {
+                    const master = configs.masters[i];
+                    const slave = configs.slaves[i];
+                    const masterKey = master ? (master.ip + ':' + master.port) : '';
+                    const slaveKey = slave ? (slave.ip + ':' + slave.port) : '';
+                    
+                    // 检查是否有重复
+                    const hasDuplicate = duplicates.includes(masterKey) || duplicates.includes(slaveKey);
+                    const samePair = master && slave && master.ip === slave.ip && master.port === slave.port;
+                    
+                    if (hasDuplicate || samePair) {
+                        pairRow.style.borderColor = '#dc3545';
+                        pairRow.style.background = '#fff5f5';
+                        pairRow.style.boxShadow = '0 0 0 2px rgba(220, 53, 69, 0.25)';
+                    } else {
+                        pairRow.style.borderColor = 'rgba(0,0,0,0.08)';
+                        pairRow.style.background = '#fff';
+                        pairRow.style.boxShadow = 'none';
+                    }
+                }
+            }
+            
+            return duplicates.length === 0;
+        }
+        
+        // 添加节点配置变化监听
+        function attachNodeConfigListeners() {
+            // 为所有IP选择和端口输入添加变化监听
+            document.querySelectorAll('#nodePairsContainer .node-ip-select, #nodePairsContainer .node-port-input').forEach(element => {
+                element.addEventListener('change', function() {
+                    const index = parseInt(this.dataset.index);
+                    validateNodePair(index);
+                    // 延迟校验所有节点以检查跨行重复
+                    setTimeout(() => validateAllNodes(), 100);
+                    // 更新拓扑预览
+                    const groupSelect = document.getElementById('serverGroup');
+                    if (groupSelect.value) {
+                        updateTopologyPreview();
+                    }
+                });
+            });
+        }
+        
+        // 服务器组变化时更新拓扑预览和版本
+        document.getElementById('serverGroup').addEventListener('change', function() {
+            const groupId = this.value;
+            const previewDiv = document.getElementById('topologyPreview');
+            const versionInfo = document.getElementById('versionInfo');
+            
+            if (!groupId) {
+                previewDiv.innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
+                        <i class="bi bi-diagram-3" style="font-size: 2.5rem; color: #adb5bd; margin-bottom: 0.5rem;"></i>
+                        <p style="color: #6c757d; font-size: 0.9rem; margin: 0;">选择服务器组后预览集群拓扑</p>
+                    </div>
+                `;
+                versionInfo.classList.add('d-none');
+                document.getElementById('configTemplate').innerHTML = '<option value="">请先选择服务器组...</option>';
+                currentServers = [];
+                return;
+            }
+            
+            const option = this.options[this.selectedIndex];
+            const servers = JSON.parse(option.dataset.servers || '[]');
+            currentServers = servers;
+            
+            // 根据服务器数量更新可选规格
+            updateClusterSizeOptions(servers.length);
+            
+            // 生成节点配置
+            generateNodeConfigs();
+            
+            // 获取Redis版本（取第一台服务器的版本，假设所有服务器版本一致）
+            const firstServer = servers[0];
+            if (firstServer && firstServer.redisVersion) {
+                updateTemplatesByVersion(firstServer.redisVersion);
+            } else {
+                document.getElementById('detectedVersion').value = '未检测到版本';
+                document.getElementById('versionInfo').classList.remove('d-none');
+                document.getElementById('configTemplate').innerHTML = '<option value="">未检测到Redis版本</option>';
+            }
+            
+            updateTopologyPreview();
+        });
+
+        // 端口变化时更新预览和节点配置
+        document.getElementById('basePort').addEventListener('change', function() {
+            // 更新所有节点端口输入框的默认值
+            const basePort = this.value;
+            document.querySelectorAll('.node-port-input').forEach(input => {
+                input.value = basePort;
+            });
+            
+            const groupSelect = document.getElementById('serverGroup');
+            if (groupSelect.value) {
+                updateTopologyPreview();
+            }
+        });
+
+        // 自动填充集群名称
+        document.getElementById('basePort').addEventListener('change', function() {
+            const nameInput = document.getElementById('clusterName');
+            if (!nameInput.value) {
+                nameInput.value = `Cluster-${this.value}`;
+            }
+        });
+
+        // 创建步骤定义
+        const createSteps = [
+            { step: 1, name: '生成配置文件', icon: 'bi-file-earmark-code' },
+            { step: 2, name: '分发配置文件', icon: 'bi-cloud-upload' },
+            { step: 3, name: '启动Redis实例', icon: 'bi-play-circle' },
+            { step: 4, name: '创建集群', icon: 'bi-diagram-3' },
+            { step: 5, name: '配置主从关系', icon: 'bi-arrow-repeat' },
+            { step: 6, name: '验证集群', icon: 'bi-check-circle' }
+        ];
+
+        let progressInterval = null;
+        let currentClusterId = null; // 保存当前创建的集群ID，用于失败时清理
+
+        // 返回集群列表并清理失败的集群记录
+        async function backToClustersWithCleanup() {
+            if (currentClusterId) {
+                try {
+                    // 删除本地记录的集群
+                    await axios.delete(`/api/clusters/${currentClusterId}`);
+                    console.log(`已清理失败集群: ${currentClusterId}`);
+                } catch (e) {
+                    console.error('清理集群失败:', e);
+                }
+            }
+            window.location.href = '/clusters';
+        }
+
+        function initProgressModal() {
+            const stepsContainer = document.getElementById('createSteps');
+            stepsContainer.innerHTML = createSteps.map((step) => `
+                <div class="list-group-item d-flex align-items-center py-2" id="step_${step.step}">
+                    <div class="step-number me-3" style="width: 28px; height: 28px; border-radius: 50%; 
+                         background: #e9ecef; color: #6c757d; display: flex; align-items: center; 
+                         justify-content: center; font-size: 0.85rem; font-weight: 500;">
+                        ${step.step}
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="step-name">${step.name}</div>
+                        <div class="step-status small text-muted">等待中...</div>
+                    </div>
+                    <div class="step-icon">
+                        <i class="bi ${step.icon} text-muted"></i>
+                    </div>
+                </div>
+            `).join('');
+            
+            document.getElementById('createProgressBar').style.width = '0%';
+            document.getElementById('createProgressText').textContent = '准备中...';
+            document.getElementById('createProgressPercent').textContent = '0%';
+            document.getElementById('createProgressFooter').style.display = 'none';
+        }
+
+        function updateStepStatus(stepNum, status, message) {
+            const stepEl = document.getElementById(`step_${stepNum}`);
+            if (!stepEl) return;
+            
+            const numberEl = stepEl.querySelector('.step-number');
+            const statusEl = stepEl.querySelector('.step-status');
+            const iconEl = stepEl.querySelector('.step-icon i');
+            
+            if (status === 'running') {
+                numberEl.style.background = '#0d6efd';
+                numberEl.style.color = '#fff';
+                statusEl.textContent = message || '执行中...';
+                statusEl.className = 'step-status small text-primary';
+                iconEl.className = 'bi bi-arrow-repeat spin';
+            } else if (status === 'success') {
+                numberEl.style.background = '#198754';
+                numberEl.style.color = '#fff';
+                numberEl.innerHTML = '<i class="bi bi-check"></i>';
+                statusEl.textContent = message || '已完成';
+                statusEl.className = 'step-status small text-success';
+                iconEl.className = 'bi bi-check-circle-fill text-success';
+            } else if (status === 'error') {
+                numberEl.style.background = '#dc3545';
+                numberEl.style.color = '#fff';
+                numberEl.innerHTML = '<i class="bi bi-x"></i>';
+                statusEl.textContent = message || '失败';
+                statusEl.className = 'step-status small text-danger';
+                iconEl.className = 'bi bi-x-circle-fill text-danger';
+            }
+        }
+
+        async function startProgressPolling(clusterId) {
+            let completed = false;
+            
+            progressInterval = setInterval(async () => {
+                try {
+                    const response = await axios.get(`/api/clusters/${clusterId}/progress`);
+                    const progress = response.data.data;
+                    
+                    if (!progress) return;
+                    
+                    // 计算进度百分比
+                    const currentStep = progress.currentStep || 0;
+                    const totalSteps = progress.totalSteps || 6;
+                    const percent = Math.round((currentStep / totalSteps) * 100);
+                    document.getElementById('createProgressBar').style.width = `${percent}%`;
+                    document.getElementById('createProgressPercent').textContent = `${percent}%`;
+                    
+                    // 更新步骤状态
+                    if (progress.steps && Array.isArray(progress.steps)) {
+                        progress.steps.forEach(step => {
+                            updateStepStatus(step.step, step.status, step.message);
+                        });
+                    }
+                    
+                    // 更新当前状态文本
+                    if (progress.steps && Array.isArray(progress.steps)) {
+                        const runningStep = progress.steps.find(s => s.status === 'running');
+                        if (runningStep) {
+                            document.getElementById('createProgressText').textContent = runningStep.name;
+                        } else if (currentStep > 0 && currentStep <= createSteps.length) {
+                            document.getElementById('createProgressText').textContent = (createSteps[currentStep - 1] && createSteps[currentStep - 1].name) ? createSteps[currentStep - 1].name : '处理中...';
+                        }
+                    }
+                    
+                    // 检查是否完成
+                    if (progress.status === 'completed') {
+                        completed = true;
+                        clearInterval(progressInterval);
+                        document.getElementById('createProgressBar').className = 'progress-bar bg-success';
+                        document.getElementById('createProgressBar').style.width = '100%';
+                        document.getElementById('createProgressText').textContent = '创建成功！';
+                        document.getElementById('createProgressPercent').textContent = '100%';
+                        document.getElementById('createProgressFooter').style.display = 'block';
+                        document.getElementById('createProgressFooter').innerHTML = `
+                            <a href="/clusters" class="btn btn-primary">返回集群列表</a>
+                        `;
+                        showToast('集群创建成功！', 'success');
+                    } else if (progress.status === 'failed' || progress.status === 'error') {
+                        completed = true;
+                        clearInterval(progressInterval);
+                        document.getElementById('createProgressBar').className = 'progress-bar bg-danger';
+                        document.getElementById('createProgressText').textContent = '创建失败';
+                        document.getElementById('createProgressFooter').style.display = 'block';
+                        document.getElementById('createProgressFooter').innerHTML = `
+                            <button class="btn btn-primary" onclick="backToClustersWithCleanup()">返回集群列表</button>
+                        `;
+                        showToast(progress.error || '集群创建失败', 'error');
+                    }
+                } catch (error) {
+                    console.error('获取进度失败:', error);
+                }
+            }, 1000);
+            
+            // 5分钟后自动停止轮询
+            setTimeout(() => {
+                if (!completed && progressInterval) {
+                    clearInterval(progressInterval);
+                }
+            }, 300000);
+        }
+
+        // 创建集群
+        document.getElementById('createClusterForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const groupId = document.getElementById('serverGroup').value;
+            const templateId = document.getElementById('configTemplate').value;
+            const basePort = parseInt(document.getElementById('basePort').value);
+            const redisVersion = document.getElementById('redisVersion').value;
+            const password = document.getElementById('clusterPassword').value;
+            const clusterName = document.getElementById('clusterName').value;
+            const clusterConfigDir = document.getElementById('clusterConfigDir').value;
+            const maxMemory = parseInt(document.getElementById('maxMemory').value);
+            const maxmemoryPolicy = document.getElementById('maxmemoryPolicy').value;
+            const clusterSize = currentClusterSize;
+            
+            if (!groupId || !templateId || !basePort || !redisVersion || !clusterName || !maxMemory || !maxmemoryPolicy) {
+                showToast('请填写完整信息', 'warning');
+                return;
+            }
+            
+            // 收集节点配置
+            const nodeConfigs = getNodeConfigs();
+            if (nodeConfigs.masters.length !== clusterSize || nodeConfigs.slaves.length !== clusterSize) {
+                showToast('节点配置不完整', 'warning');
+                return;
+            }
+            
+            // 验证主从节点不重复
+            const masterIps = new Set(nodeConfigs.masters.map(n => n.ip + ':' + n.port));
+            const slaveIps = new Set(nodeConfigs.slaves.map(n => n.ip + ':' + n.port));
+            
+            // 检查主节点之间是否有重复
+            const masterDuplicates = [];
+            const masterSeen = new Set();
+            for (const master of nodeConfigs.masters) {
+                const key = master.ip + ':' + master.port;
+                if (masterSeen.has(key)) {
+                    masterDuplicates.push(key);
+                }
+                masterSeen.add(key);
+            }
+            if (masterDuplicates.length > 0) {
+                showToast('主节点配置有重复: ' + masterDuplicates.join(', '), 'error');
+                return;
+            }
+            
+            // 检查从节点之间是否有重复
+            const slaveDuplicates = [];
+            const slaveSeen = new Set();
+            for (const slave of nodeConfigs.slaves) {
+                const key = slave.ip + ':' + slave.port;
+                if (slaveSeen.has(key)) {
+                    slaveDuplicates.push(key);
+                }
+                slaveSeen.add(key);
+            }
+            if (slaveDuplicates.length > 0) {
+                showToast('从节点配置有重复: ' + slaveDuplicates.join(', '), 'error');
+                return;
+            }
+            
+            // 检查主从节点之间是否有重复
+            for (const ipPort of slaveIps) {
+                if (masterIps.has(ipPort)) {
+                    showToast('主节点和从节点不能是同一个IP:端口: ' + ipPort, 'error');
+                    return;
+                }
+            }
+            
+            // 检查同一行内的主从是否配置相同
+            for (let i = 0; i < clusterSize; i++) {
+                const master = nodeConfigs.masters[i];
+                const slave = nodeConfigs.slaves[i];
+                if (master && slave && master.ip === slave.ip && master.port === slave.port) {
+                    showToast(`第${i + 1}对节点配置错误: 主节点和从节点不能使用相同的IP和端口`, 'error');
+                    return;
+                }
+            }
+            
+            // 构建主从配对配置（默认一一对应）
+            const masterSlavePairs = [];
+            for (let i = 0; i < clusterSize; i++) {
+                masterSlavePairs.push({
+                    master: nodeConfigs.masters[i],
+                    slave: nodeConfigs.slaves[i]
+                });
+            }
+            
+            // 显示进度弹窗
+            initProgressModal();
+            const modal = new bootstrap.Modal(document.getElementById('createProgressModal'));
+            modal.show();
+            
+            try {
+                // 构建符合后端期望的参数结构
+                const masterSlaveConfig = {
+                    masters: nodeConfigs.masters.map((m, i) => i),
+                    slaves: nodeConfigs.slaves.map((s, i) => i),
+                    pairs: masterSlavePairs  // 直接使用已构建的配对，避免错误映射
+                }
+
+                // 合并所有节点配置为一个数组
+                const nodeConfigsList = [...nodeConfigs.masters, ...nodeConfigs.slaves];
+                
+                const response = await axios.post('/api/clusters', {
+                    groupId: parseInt(groupId),
+                    templateId: parseInt(templateId),
+                    basePort: basePort,
+                    redisVersion: redisVersion,
+                    password: password,
+                    name: clusterName,
+                    clusterConfigDir: clusterConfigDir,
+                    maxMemory: maxMemory,
+                    maxmemoryPolicy: maxmemoryPolicy,
+                    clusterSize: clusterSize,
+                    masterSlaveConfig: masterSlaveConfig,
+                    nodeConfigs: nodeConfigsList
+                });
+                
+                if (response.data.code === 200) {
+                    currentClusterId = response.data.data.clusterId;
+                    // 开始轮询进度
+                    startProgressPolling(currentClusterId);
+                } else {
+                    modal.hide();
+                    showToast(response.data.message, 'error');
+                }
+            } catch (error) {
+                modal.hide();
+                showToast((error.response && error.response.data && error.response.data.message) ? error.response.data.message : '创建失败', 'error');
+            }
+        });
+
+        // 更新所有已打开预览的节点配置
+        async function updateAllNodePreviews() {
+            console.log('[DEBUG] updateAllNodePreviews() 被调用');
+            
+            // 检查是否有打开的预览弹窗
+            const modal = document.getElementById('nodeConfigPreviewModal');
+            if (!modal) {
+                console.log('[DEBUG] 没有找到预览弹窗，跳过更新');
+                return; // 弹窗不存在，不需要更新
+            }
+            
+            // 检查弹窗是否可见（Bootstrap 5使用show类）
+            const isVisible = modal.classList.contains('show');
+            console.log('[DEBUG] 弹窗是否可见 (show类):', isVisible);
+            console.log('[DEBUG] 弹窗display样式:', window.getComputedStyle(modal).display);
+            
+            if (!isVisible) {
+                console.log('[DEBUG] 弹窗未打开，跳过更新');
+                return; // 弹窗未打开，不需要更新
+            }
+            
+            // 获取当前活动的节点ID
+            const activeNodeId = modal.dataset.activeNodeId;
+            const isMaster = modal.dataset.activeIsMaster === 'true';
+            
+            console.log('[DEBUG] 活动节点ID:', activeNodeId, '是否主节点:', isMaster);
+            
+            if (!activeNodeId) {
+                console.log('[DEBUG] 没有活动节点ID，跳过更新');
+                return; // 没有活动节点，不需要更新
+            }
+            
+            // 显示加载状态
+            const contentEl = document.getElementById('nodePreviewContent');
+            if (contentEl) {
+                contentEl.textContent = '更新中...';
+            }
+            
+            // 重新加载预览
+            await previewNodeConfig(activeNodeId, isMaster);
+        }
+
+        // 设置配置变更监听 - 确保在DOM加载后执行
+        function setupConfigListeners() {
+            const maxMemoryInput = document.getElementById('maxMemory');
+            const maxmemoryPolicySelect = document.getElementById('maxmemoryPolicy');
+            const clusterConfigDirInput = document.getElementById('clusterConfigDir');
+            const clusterPasswordInput = document.getElementById('clusterPassword');
+            
+            console.log('[DEBUG] 设置配置监听器...');
+            console.log('[DEBUG] maxMemoryInput:', maxMemoryInput ? '存在' : '不存在', '值:', maxMemoryInput ? maxMemoryInput.value : 'N/A');
+            console.log('[DEBUG] maxmemoryPolicySelect:', maxmemoryPolicySelect ? '存在' : '不存在', '值:', maxmemoryPolicySelect ? maxmemoryPolicySelect.value : 'N/A');
+            console.log('[DEBUG] clusterConfigDirInput:', clusterConfigDirInput ? '存在' : '不存在', '值:', clusterConfigDirInput ? clusterConfigDirInput.value : 'N/A');
+            
+            if (!maxMemoryInput || !maxmemoryPolicySelect) {
+                console.warn('[DEBUG] 配置元素未找到，监听器设置失败');
+                return;
+            }
+            
+            // maxMemory: 输入时实时更新
+            let memoryUpdateTimeout;
+            maxMemoryInput.addEventListener('input', function(e) {
+                console.log('[DEBUG] maxMemory input 事件触发，新值:', e.target.value);
+                clearTimeout(memoryUpdateTimeout);
+                memoryUpdateTimeout = setTimeout(() => {
+                    console.log('[DEBUG] 开始更新预览（来自maxMemory）');
+                    updateAllNodePreviews();
+                }, 300);
+            });
+            
+            // maxmemoryPolicy: 选择变更时立即更新
+            maxmemoryPolicySelect.addEventListener('change', function(e) {
+                console.log('[DEBUG] maxmemoryPolicy change 事件触发，新值:', e.target.value);
+                updateAllNodePreviews();
+            });
+            
+            // clusterConfigDir: 输入时实时更新
+            let dirUpdateTimeout;
+            clusterConfigDirInput.addEventListener('input', function(e) {
+                console.log('[DEBUG] clusterConfigDir input 事件触发，新值:', e.target.value);
+                clearTimeout(dirUpdateTimeout);
+                dirUpdateTimeout = setTimeout(() => {
+                    console.log('[DEBUG] 开始更新预览（来自clusterConfigDir）');
+                    updateAllNodePreviews();
+                }, 300);
+            });
+            
+            // clusterPassword: 密码变化时更新
+            let passwordUpdateTimeout;
+            clusterPasswordInput.addEventListener('input', function(e) {
+                console.log('[DEBUG] clusterPassword input 事件触发，新值:', e.target.value ? '***' : '空');
+                clearTimeout(passwordUpdateTimeout);
+                passwordUpdateTimeout = setTimeout(() => {
+                    updateAllNodePreviews();
+                }, 300);
+            });
+            
+            console.log('[DEBUG] 配置监听器设置完成');
+        }
+
+        // 初始化
+        loadServerGroups();
+        loadTemplates();
+        
+        // 设置配置监听器
+        setupConfigListeners();
+    </script>
+</body>
+</html>

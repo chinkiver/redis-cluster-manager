@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('实时监控V2')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('实时监控V2')"></header>
+        
+        <div class="content-container">
+            <!-- 顶部控制栏 -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-4 mb-2 mb-md-0">
+                            <label class="form-label mb-1"><i class="bi bi-hdd-rack"></i> 选择集群</label>
+                            <select id="clusterSelect" class="form-select">
+                                <option value="">请选择集群...</option>
+                                <option th:each="cluster : ${clusters}" th:value="${cluster.id}" th:text="${cluster.name}">集群名称</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-2 mb-md-0">
+                            <label class="form-label mb-1"><i class="bi bi-arrow-repeat"></i> 自动刷新</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="refreshInterval" id="refresh5min" value="300000" checked>
+                                <label class="btn btn-outline-primary" for="refresh5min">5分钟</label>
+                                
+                                <input type="radio" class="btn-check" name="refreshInterval" id="refresh10min" value="600000">
+                                <label class="btn btn-outline-primary" for="refresh10min">10分钟</label>
+                                
+                                <input type="radio" class="btn-check" name="refreshInterval" id="refreshManual" value="0">
+                                <label class="btn btn-outline-primary" for="refreshManual">手动</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end justify-content-md-end">
+                            <button class="btn btn-outline-primary me-2" onclick="refreshAllData()">
+                                <i class="bi bi-arrow-clockwise"></i> 立即刷新
+                            </button>
+                            <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#thresholdModal">
+                                <i class="bi bi-sliders"></i> 告警阈值
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 视图切换标签页 -->
+            <ul class="nav nav-tabs monitor-tabs mb-4" id="monitorTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="physical-tab" data-bs-toggle="tab" data-bs-target="#physical" type="button" role="tab">
+                        <i class="bi bi-server"></i> 物理机监控
+                        <span class="badge bg-secondary ms-1" id="physicalCount">6</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="instance-tab" data-bs-toggle="tab" data-bs-target="#instance" type="button" role="tab">
+                        <i class="bi bi-box"></i> 实例监控
+                        <span class="badge bg-secondary ms-1" id="instanceCount">0</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="cluster-tab" data-bs-toggle="tab" data-bs-target="#cluster" type="button" role="tab">
+                        <i class="bi bi-grid-3x3-gap"></i> 集群监控
+                        <span class="badge bg-secondary ms-1" id="clusterCount">0</span>
+                    </button>
+                </li>
+            </ul>
+
+            <!-- 标签页内容 -->
+            <div class="tab-content" id="monitorTabContent">
+                <!-- 物理机级监控 -->
+                <div class="tab-pane fade show active" id="physical" role="tabpanel">
+                    <div class="row g-4" id="physicalCards">
+                        <!-- 动态加载物理机卡片 -->
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary"></div>
+                            <p class="mt-2 text-muted">加载物理机监控数据...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 实例级监控 -->
+                <div class="tab-pane fade" id="instance" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6><i class="bi bi-table"></i> Redis实例详情</h6>
+                            <div class="d-flex gap-2">
+                                <span class="badge bg-success"><i class="bi bi-circle-fill"></i> 主节点</span>
+                                <span class="badge bg-info"><i class="bi bi-circle-fill"></i> 从节点</span>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0" id="instanceTable">
+                                    <thead>
+                                        <tr>
+                                            <th>实例地址</th>
+                                            <th>所属集群</th>
+                                            <th>角色</th>
+                                            <th>内存使用率</th>
+                                            <th>内存碎片率</th>
+                                            <th>连接数</th>
+                                            <th>QPS</th>
+                                            <th>延迟(P99)</th>
+                                            <th>复制延迟</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="instanceTableBody">
+                                        <tr>
+                                            <td colspan="9" class="text-center py-5">
+                                                <div class="spinner-border text-primary"></div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 集群级监控 -->
+                <div class="tab-pane fade" id="cluster" role="tabpanel">
+                    <!-- 集群概览卡片 -->
+                    <div class="row g-4 mb-4" id="clusterOverview">
+                        <div class="col-md-4">
+                            <div class="stat-card primary">
+                                <div class="stat-label">集群状态</div>
+                                <div class="stat-value" id="clusterStatus">-</div>
+                                <div class="stat-change" id="clusterStatusDetail">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-card info">
+                                <div class="stat-label">槽位分配</div>
+                                <div class="stat-value" id="slotAllocation">-</div>
+                                <div class="progress mt-2" style="height: 6px;">
+                                    <div class="progress-bar" id="slotProgress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-card success">
+                                <div class="stat-label">主从健康度</div>
+                                <div class="stat-value" id="replicationHealth">-</div>
+                                <div class="stat-change" id="replicationDetail">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 集群统计图表 -->
+                    <div class="row g-4 mb-4">
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="bi bi-lightning"></i> 总QPS趋势</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="clusterQpsChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="bi bi-memory"></i> 总内存使用</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="clusterMemoryChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 集群列表 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h6><i class="bi bi-grid-3x3-gap"></i> 集群详细信息</h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0" id="clusterTable">
+                                    <thead>
+                                        <tr>
+                                            <th>集群名称</th>
+                                            <th>节点数</th>
+                                            <th>主节点</th>
+                                            <th>从节点</th>
+                                            <th>内存使用</th>
+                                            <th>总QPS</th>
+                                            <th>槽位状态</th>
+                                            <th>健康度</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="clusterTableBody">
+                                        <tr>
+                                            <td colspan="8" class="text-center py-5">
+                                                <div class="spinner-border text-primary"></div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 告警阈值配置模态框 -->
+    <div class="modal fade" id="thresholdModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-sliders text-warning"></i> 告警阈值配置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-4">
+                        <!-- 物理机阈值 -->
+                        <div class="col-md-6">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white">
+                                    <i class="bi bi-server"></i> 物理机阈值
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">内存剩余警告 (%)</label>
+                                        <input type="number" class="form-control threshold-input" id="memWarnThreshold" value="20" min="5" max="50">
+                                        <small class="text-muted">低于此值触发警告</small>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">内存剩余危险 (%)</label>
+                                        <input type="number" class="form-control threshold-input" id="memDangerThreshold" value="10" min="1" max="30">
+                                        <small class="text-muted">低于此值触发危险告警</small>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">CPU使用率警告 (%)</label>
+                                        <input type="number" class="form-control threshold-input" id="cpuWarnThreshold" value="80" min="50" max="95">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Swap使用率警告 (%)</label>
+                                        <input type="number" class="form-control threshold-input" id="swapWarnThreshold" value="0" min="0" max="50">
+                                        <small class="text-muted">大于0触发警告</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 实例阈值 -->
+                        <div class="col-md-6">
+                            <div class="card border-info">
+                                <div class="card-header bg-info text-white">
+                                    <i class="bi bi-box"></i> 实例阈值
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">内存使用率警告 (%)</label>
+                                        <input type="number" class="form-control threshold-input" id="instMemWarnThreshold" value="80" min="50" max="95">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">内存碎片率警告</label>
+                                        <input type="number" class="form-control threshold-input" id="fragWarnThreshold" value="1.5" min="1" max="5" step="0.1">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">连接数警告</label>
+                                        <input type="number" class="form-control threshold-input" id="connWarnThreshold" value="10000" min="1000" max="50000">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">延迟P99警告 (ms)</label>
+                                        <input type="number" class="form-control threshold-input" id="latencyWarnThreshold" value="10" min="1" max="1000">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 集群阈值 -->
+                        <div class="col-12">
+                            <div class="card border-success">
+                                <div class="card-header bg-success text-white">
+                                    <i class="bi bi-grid-3x3-gap"></i> 集群阈值
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <label class="form-label">节点健康度警告 (%)</label>
+                                            <input type="number" class="form-control threshold-input" id="healthWarnThreshold" value="90" min="50" max="100">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">复制延迟警告 (秒)</label>
+                                            <input type="number" class="form-control threshold-input" id="replDelayWarnThreshold" value="5" min="1" max="60">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">槽位异常警告</label>
+                                            <input type="number" class="form-control threshold-input" id="slotWarnThreshold" value="1" min="0" max="16384">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveThresholds()">
+                        <i class="bi bi-check"></i> 保存配置
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <style>
+        /* 监控页面特定样式 */
+        .monitor-tabs {
+            border-bottom: 2px solid var(--light);
+        }
+        
+        .monitor-tabs .nav-link {
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: var(--gray);
+            font-weight: 500;
+            padding: 12px 24px;
+            transition: var(--transition);
+        }
+        
+        .monitor-tabs .nav-link:hover {
+            color: var(--primary);
+            border-bottom-color: var(--primary-light);
+        }
+        
+        .monitor-tabs .nav-link.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+            background: transparent;
+        }
+        
+        /* 物理机卡片样式 */
+        .physical-card {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+            overflow: hidden;
+            height: 100%;
+        }
+        
+        .physical-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-4px);
+        }
+        
+        .physical-card-header {
+            background: linear-gradient(135deg, var(--dark) 0%, #374151 100%);
+            color: white;
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .physical-card-header .host-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .physical-card-header .host-ip {
+            font-size: 0.75rem;
+            opacity: 0.8;
+        }
+        
+        .physical-card-body {
+            padding: 20px;
+        }
+        
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--light);
+        }
+        
+        .metric-item:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--gray);
+            font-size: 0.875rem;
+        }
+        
+        .metric-label i {
+            font-size: 1rem;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-weight: 600;
+            font-size: 0.9375rem;
+        }
+        
+        .metric-value.warning {
+            color: var(--warning);
+        }
+        
+        .metric-value.danger {
+            color: var(--danger);
+        }
+        
+        .metric-value.success {
+            color: var(--success);
+        }
+        
+        /* 进度条样式 */
+        .metric-progress {
+            width: 100px;
+            height: 8px;
+            background: var(--light);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .metric-progress-bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        .metric-progress-bar.success {
+            background: linear-gradient(90deg, var(--success) 0%, #34d399 100%);
+        }
+        
+        .metric-progress-bar.warning {
+            background: linear-gradient(90deg, var(--warning) 0%, #fbbf24 100%);
+        }
+        
+        .metric-progress-bar.danger {
+            background: linear-gradient(90deg, var(--danger) 0%, #f87171 100%);
+        }
+        
+        /* 实例表格样式 */
+        .instance-role {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .instance-role.master {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+        
+        .instance-role.slave {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--info);
+        }
+        
+        .instance-role i {
+            font-size: 0.5rem;
+        }
+        
+        /* 延迟指示器 */
+        .latency-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .latency-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .latency-dot.good { background: var(--success); }
+        .latency-dot.warning { background: var(--warning); }
+        .latency-dot.danger { background: var(--danger); }
+        
+        /* 集群状态 */
+        .cluster-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        
+        .cluster-status.healthy {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+        
+        .cluster-status.warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+        
+        .cluster-status.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+        
+        /* 槽位可视化 */
+        .slot-visual {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin-top: 8px;
+        }
+        
+        .slot-item {
+            width: 8px;
+            height: 8px;
+            border-radius: 1px;
+        }
+        
+        .slot-item.assigned { background: var(--success); }
+        .slot-item.unassigned { background: var(--light); }
+        .slot-item.migrating { background: var(--warning); }
+        
+        /* 刷新按钮动画 */
+        .btn-refreshing i {
+            animation: spin 1s linear infinite;
+        }
+        
+        /* 阈值输入样式 */
+        .threshold-input {
+            font-weight: 500;
+        }
+        
+        .threshold-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(220, 56, 44, 0.1);
+        }
+        
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .monitor-tabs .nav-link {
+                padding: 10px 14px;
+                font-size: 0.875rem;
+            }
+            
+            .physical-card-header .host-name {
+                font-size: 1rem;
+            }
+            
+            .metric-progress {
+                width: 60px;
+            }
+        }
+        
+        /* 集群选择下拉框样式 */
+        #clusterDropdown {
+            position: relative;
+        }
+        #clusterDropdown .dropdown-menu {
+            width: 100%;
+            margin-top: 2px;
+            z-index: 9999 !important;
+        }
+        #clusterDropdown .dropdown-item {
+            cursor: pointer;
+            padding: 8px 16px;
+            transition: background-color 0.2s;
+        }
+        #clusterDropdown .dropdown-item:hover,
+        #clusterDropdown .dropdown-item.active {
+            background-color: #f8f9fa;
+        }
+        #clusterDropdown .dropdown-item.no-match {
+            color: #6c757d;
+            cursor: default;
+        }
+
+    </style>
+    <script>
+        setActiveNav('nav-monitor');
+
+        // 全局变量
+        let refreshTimer = null;
+        let currentClusterId = '';
+        let clusterQpsChart = null;
+        let clusterMemoryChart = null;
+
+        
+        // 阈值配置
+        let thresholds = {
+            memWarn: 20,
+            memDanger: 10,
+            cpuWarn: 80,
+            swapWarn: 0,
+            instMemWarn: 80,
+            fragWarn: 1.5,
+            connWarn: 10000,
+            latencyWarn: 10,
+            healthWarn: 90,
+            replDelayWarn: 5,
+            slotWarn: 1
+        };
+
+        // 模拟物理机数据（6台实体机）
+        const mockPhysicalMachines = [
+            { id: 1, name: 'Redis-Node-01', ip: '192.168.1.101', instances: 6 },
+            { id: 2, name: 'Redis-Node-02', ip: '192.168.1.102', instances: 6 },
+            { id: 3, name: 'Redis-Node-03', ip: '192.168.1.103', instances: 6 },
+            { id: 4, name: 'Redis-Node-04', ip: '192.168.1.104', instances: 6 },
+            { id: 5, name: 'Redis-Node-05', ip: '192.168.1.105', instances: 6 },
+            { id: 6, name: 'Redis-Node-06', ip: '192.168.1.106', instances: 6 }
+        ];
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadThresholds();
+            refreshAllData();
+            setupRefreshInterval();
+            
+            // 监听集群选择变化
+            document.getElementById('clusterSelect').addEventListener('change', function() {
+                currentClusterId = this.value;
+                if (currentClusterId) {
+                    refreshAllData();
+                }
+            });
+            
+            // 刷新间隔事件
+            document.querySelectorAll('input[name="refreshInterval"]').forEach(radio => {
+                radio.addEventListener('change', setupRefreshInterval);
+            });
+        });
+
+
+
+        // 设置刷新间隔
+        function setupRefreshInterval() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+                refreshTimer = null;
+            }
+            
+            const interval = parseInt(document.querySelector('input[name="refreshInterval"]:checked').value);
+            if (interval > 0) {
+                refreshTimer = setInterval(refreshAllData, interval);
+            }
+        }
+
+        // 刷新所有数据
+        async function refreshAllData() {
+            const refreshBtn = document.querySelector('button[onclick="refreshAllData()"]');
+            refreshBtn.classList.add('btn-refreshing');
+            refreshBtn.disabled = true;
+            
+            try {
+                await Promise.all([
+                    loadPhysicalMonitorData(),
+                    loadInstanceMonitorData(),
+                    loadClusterMonitorData()
+                ]);
+                showToast('数据刷新成功', 'success');
+            } catch (error) {
+                showToast('数据刷新失败: ' + error.message, 'error');
+            } finally {
+                setTimeout(() => {
+                    refreshBtn.classList.remove('btn-refreshing');
+                    refreshBtn.disabled = false;
+                }, 500);
+            }
+        }
+
+        // 加载物理机监控数据
+        async function loadPhysicalMonitorData() {
+            // 模拟API调用，实际使用时替换为真实API
+            // const response = await axios.get('/api/monitor/physical', {
+            //     params: { clusterId: currentClusterId }
+            // });
+            
+            // 模拟数据
+            const physicalData = mockPhysicalMachines.map(machine => ({
+                ...machine,
+                memoryFreePercent: Math.random() * 30 + 10, // 10-40%
+                cpuUsage: Math.random() * 60 + 10, // 10-70%
+                diskIoUsage: Math.random() * 50 + 5, // 5-55%
+                networkBandwidthUsage: Math.random() * 70 + 10, // 10-80%
+                swapUsage: Math.random() > 0.8 ? Math.random() * 10 : 0 // 偶尔有swap
+            }));
+            
+            renderPhysicalCards(physicalData);
+        }
+
+        // 渲染物理机卡片
+        function renderPhysicalCards(machines) {
+            const container = document.getElementById('physicalCards');
+            
+            container.innerHTML = machines.map((machine, index) => {
+                const memClass = machine.memoryFreePercent < thresholds.memDanger ? 'danger' : 
+                                machine.memoryFreePercent < thresholds.memWarn ? 'warning' : 'success';
+                const cpuClass = machine.cpuUsage > thresholds.cpuWarn ? 'warning' : 'success';
+                const swapClass = machine.swapUsage > thresholds.swapWarn ? 'warning' : 'success';
+                
+                return `
+                    <div class="col-lg-4 col-md-6 animate-fade-in" style="animation-delay: ${index * 0.1}s;">
+                        <div class="physical-card">
+                            <div class="physical-card-header">
+                                <div>
+                                    <div class="host-name">${machine.name}</div>
+                                    <div class="host-ip">${machine.ip}</div>
+                                </div>
+                                <span class="badge bg-light text-dark">
+                                    <i class="bi bi-box"></i> ${machine.instances} 实例
+                                </span>
+                            </div>
+                            <div class="physical-card-body">
+                                <div class="metric-item">
+                                    <div class="metric-label">
+                                        <i class="bi bi-memory text-primary"></i>
+                                        内存剩余
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="metric-progress">
+                                            <div class="metric-progress-bar ${memClass}" 
+                                                 style="width: ${machine.memoryFreePercent}%"></div>
+                                        </div>
+                                        <span class="metric-value ${memClass}">${machine.memoryFreePercent.toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">
+                                        <i class="bi bi-cpu text-info"></i>
+                                        CPU使用
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="metric-progress">
+                                            <div class="metric-progress-bar ${cpuClass}" 
+                                                 style="width: ${machine.cpuUsage}%"></div>
+                                        </div>
+                                        <span class="metric-value ${cpuClass}">${machine.cpuUsage.toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">
+                                        <i class="bi bi-hdd text-warning"></i>
+                                        磁盘IO
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="metric-progress">
+                                            <div class="metric-progress-bar ${machine.diskIoUsage > 70 ? 'warning' : 'success'}" 
+                                                 style="width: ${machine.diskIoUsage}%"></div>
+                                        </div>
+                                        <span class="metric-value">${machine.diskIoUsage.toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">
+                                        <i class="bi bi-wifi text-success"></i>
+                                        网络带宽
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="metric-progress">
+                                            <div class="metric-progress-bar ${machine.networkBandwidthUsage > 70 ? 'warning' : 'success'}" 
+                                                 style="width: ${machine.networkBandwidthUsage}%"></div>
+                                        </div>
+                                        <span class="metric-value">${machine.networkBandwidthUsage.toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">
+                                        <i class="bi bi-arrow-left-right text-secondary"></i>
+                                        Swap使用
+                                    </div>
+                                    <span class="metric-value ${swapClass}">${machine.swapUsage.toFixed(1)}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('physicalCount').textContent = machines.length;
+        }
+
+        // 加载实例监控数据
+        async function loadInstanceMonitorData() {
+            // 模拟API调用
+            // const response = await axios.get('/api/monitor/instances', {
+            //     params: { clusterId: currentClusterId }
+            // });
+            
+            // 生成模拟实例数据
+            const clusters = ['Cache-Cluster-A', 'Cache-Cluster-B', 'Cache-Cluster-C'];
+            const instances = [];
+            let id = 1;
+            
+            clusters.forEach(cluster => {
+                for (let i = 1; i <= 6; i++) {
+                    const isMaster = i <= 3;
+                    instances.push({
+                        id: id++,
+                        address: `192.168.1.${100 + i}:${7000 + i}`,
+                        cluster: cluster,
+                        role: isMaster ? 'master' : 'slave',
+                        memoryUsage: Math.random() * 60 + 20,
+                        maxMemory: 4096,
+                        fragmentationRatio: 1 + Math.random() * 0.8,
+                        connections: Math.floor(Math.random() * 5000) + 100,
+                        qps: Math.floor(Math.random() * 50000) + 1000,
+                        latencyP99: Math.random() * 20 + 1,
+                        replicationLag: isMaster ? 0 : Math.random() * 3
+                    });
+                }
+            });
+            
+            renderInstanceTable(instances);
+        }
+
+        // 渲染实例表格
+        function renderInstanceTable(instances) {
+            const tbody = document.getElementById('instanceTableBody');
+            
+            tbody.innerHTML = instances.map((inst, index) => {
+                const memClass = inst.memoryUsage > thresholds.instMemWarn ? 'warning' : '';
+                const fragClass = inst.fragmentationRatio > thresholds.fragWarn ? 'warning' : 'success';
+                const latencyClass = inst.latencyP99 > thresholds.latencyWarn ? 'warning' : 'success';
+                const replClass = inst.replicationLag > thresholds.replDelayWarn ? 'danger' : 'success';
+                
+                return `
+                    <tr class="animate-fade-in" style="animation-delay: ${index * 0.03}s;">
+                        <td><code>${inst.address}</code></td>
+                        <td><span class="badge bg-secondary">${inst.cluster}</span></td>
+                        <td>
+                            <span class="instance-role ${inst.role}">
+                                <i class="bi bi-circle-fill"></i>
+                                ${inst.role === 'master' ? '主节点' : '从节点'}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="progress flex-grow-1" style="height: 6px; max-width: 80px;">
+                                    <div class="progress-bar ${memClass ? 'bg-warning' : ''}" style="width: ${inst.memoryUsage}%"></div>
+                                </div>
+                                <span class="small ${memClass}">${inst.memoryUsage.toFixed(1)}%</span>
+                            </div>
+                        </td>
+                        <td class="${fragClass}">${inst.fragmentationRatio.toFixed(2)}</td>
+                        <td>${formatNumber(inst.connections)}</td>
+                        <td>${formatNumber(inst.qps)}</td>
+                        <td>
+                            <span class="latency-indicator">
+                                <span class="latency-dot ${latencyClass}"></span>
+                                ${inst.latencyP99.toFixed(2)} ms
+                            </span>
+                        </td>
+                        <td>
+                            ${inst.role === 'slave' 
+                                ? `<span class="${replClass}">${inst.replicationLag.toFixed(2)} s</span>`
+                                : '<span class="text-muted">-</span>'
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('') || `
+                <tr>
+                    <td colspan="9" class="text-center py-5">
+                        <div class="empty-state" style="padding: 20px;">
+                            <i class="bi bi-inbox display-4 text-muted"></i>
+                            <p class="mt-2 text-muted">暂无实例数据</p>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            
+            document.getElementById('instanceCount').textContent = instances.length;
+        }
+
+        // 加载集群监控数据
+        async function loadClusterMonitorData() {
+            // 模拟API调用
+            // const response = await axios.get('/api/monitor/clusters/detail', {
+            //     params: { clusterId: currentClusterId }
+            // });
+            
+            // 模拟集群数据
+            const clusters = [
+                { 
+                    name: 'Cache-Cluster-A', 
+                    nodes: 6, 
+                    masters: 3, 
+                    slaves: 3, 
+                    memory: 24576, 
+                    qps: 125000,
+                    slotsAssigned: 16384,
+                    health: 100,
+                    status: 'healthy'
+                },
+                { 
+                    name: 'Cache-Cluster-B', 
+                    nodes: 6, 
+                    masters: 3, 
+                    slaves: 3, 
+                    memory: 18432, 
+                    qps: 98000,
+                    slotsAssigned: 16384,
+                    health: 100,
+                    status: 'healthy'
+                },
+                { 
+                    name: 'Cache-Cluster-C', 
+                    nodes: 6, 
+                    masters: 3, 
+                    slaves: 3, 
+                    memory: 12288, 
+                    qps: 76000,
+                    slotsAssigned: 16380,
+                    health: 95,
+                    status: 'warning'
+                }
+            ];
+            
+            // 计算汇总数据
+            const totalMasters = clusters.reduce((sum, c) => sum + c.masters, 0);
+            const totalSlaves = clusters.reduce((sum, c) => sum + c.slaves, 0);
+            const avgHealth = Math.round(clusters.reduce((sum, c) => sum + c.health, 0) / clusters.length);
+            const totalSlots = clusters.reduce((sum, c) => sum + c.slotsAssigned, 0);
+            const totalMaxSlots = clusters.length * 16384;
+            
+            // 更新集群概览
+            const allHealthy = clusters.every(c => c.status === 'healthy');
+            document.getElementById('clusterStatus').innerHTML = `
+                <span class="cluster-status ${allHealthy ? 'healthy' : 'warning'}">
+                    <i class="bi bi-${allHealthy ? 'check-circle' : 'exclamation-triangle'}"></i>
+                    ${allHealthy ? '正常' : '警告'}
+                </span>
+            `;
+            document.getElementById('clusterStatusDetail').textContent = 
+                `${clusters.length}个集群 · ${clusters.filter(c => c.status !== 'healthy').length}个异常`;
+            
+            document.getElementById('slotAllocation').textContent = 
+                `${totalSlots}/${totalMaxSlots}`;
+            document.getElementById('slotProgress').style.width = 
+                `${(totalSlots / totalMaxSlots * 100).toFixed(1)}%`;
+            
+            document.getElementById('replicationHealth').innerHTML = `${avgHealth}%`;
+            document.getElementById('replicationDetail').innerHTML = `
+                <span class="${avgHealth >= thresholds.healthWarn ? 'text-success' : 'text-warning'}">
+                    ${totalMasters}主 · ${totalSlaves}从
+                </span>
+            `;
+            
+            // 渲染集群表格
+            renderClusterTable(clusters);
+            
+            // 更新图表
+            updateClusterCharts(clusters);
+            
+            document.getElementById('clusterCount').textContent = clusters.length;
+        }
+
+        // 渲染集群表格
+        function renderClusterTable(clusters) {
+            const tbody = document.getElementById('clusterTableBody');
+            
+            tbody.innerHTML = clusters.map((cluster, index) => {
+                const healthClass = cluster.health >= thresholds.healthWarn ? 'success' : 'warning';
+                
+                return `
+                    <tr class="animate-fade-in" style="animation-delay: ${index * 0.05}s;">
+                        <td><strong>${cluster.name}</strong></td>
+                        <td>${cluster.nodes}</td>
+                        <td><span class="badge bg-success">${cluster.masters}</span></td>
+                        <td><span class="badge bg-info">${cluster.slaves}</span></td>
+                        <td>${formatBytes(cluster.memory * 1024 * 1024)}</td>
+                        <td>${formatNumber(cluster.qps)}</td>
+                        <td>
+                            <span class="${cluster.slotsAssigned === 16384 ? 'text-success' : 'text-warning'}">
+                                ${cluster.slotsAssigned === 16384 ? '完整' : cluster.slotsAssigned + '/16384'}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="progress" style="width: 60px; height: 6px;">
+                                    <div class="progress-bar bg-${healthClass}" style="width: ${cluster.health}%"></div>
+                                </div>
+                                <span class="small">${cluster.health}%</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 更新集群图表
+        function updateClusterCharts(clusters) {
+            const labels = clusters.map(c => c.name);
+            const qpsData = clusters.map(c => c.qps);
+            const memoryData = clusters.map(c => c.memory);
+            
+            // QPS图表
+            if (clusterQpsChart) clusterQpsChart.destroy();
+            clusterQpsChart = new Chart(document.getElementById('clusterQpsChart'), {
+                type: 'line',
+                data: {
+                    labels: ['1m', '2m', '3m', '4m', '5m', '现在'],
+                    datasets: clusters.map((c, i) => ({
+                        label: c.name,
+                        data: Array(6).fill(0).map(() => c.qps * (0.8 + Math.random() * 0.4)),
+                        borderColor: ['#dc382c', '#3b82f6', '#10b981'][i],
+                        backgroundColor: 'transparent',
+                        tension: 0.4
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+            
+            // 内存图表
+            if (clusterMemoryChart) clusterMemoryChart.destroy();
+            clusterMemoryChart = new Chart(document.getElementById('clusterMemoryChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '内存使用 (MB)',
+                        data: memoryData,
+                        backgroundColor: ['#dc382c', '#3b82f6', '#10b981'],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 加载阈值配置
+        function loadThresholds() {
+            const saved = localStorage.getItem('monitorThresholds');
+            if (saved) {
+                thresholds = JSON.parse(saved);
+                document.getElementById('memWarnThreshold').value = thresholds.memWarn;
+                document.getElementById('memDangerThreshold').value = thresholds.memDanger;
+                document.getElementById('cpuWarnThreshold').value = thresholds.cpuWarn;
+                document.getElementById('swapWarnThreshold').value = thresholds.swapWarn;
+                document.getElementById('instMemWarnThreshold').value = thresholds.instMemWarn;
+                document.getElementById('fragWarnThreshold').value = thresholds.fragWarn;
+                document.getElementById('connWarnThreshold').value = thresholds.connWarn;
+                document.getElementById('latencyWarnThreshold').value = thresholds.latencyWarn;
+                document.getElementById('healthWarnThreshold').value = thresholds.healthWarn;
+                document.getElementById('replDelayWarnThreshold').value = thresholds.replDelayWarn;
+                document.getElementById('slotWarnThreshold').value = thresholds.slotWarn;
+            }
+        }
+
+        // 保存阈值配置
+        function saveThresholds() {
+            thresholds = {
+                memWarn: parseFloat(document.getElementById('memWarnThreshold').value),
+                memDanger: parseFloat(document.getElementById('memDangerThreshold').value),
+                cpuWarn: parseFloat(document.getElementById('cpuWarnThreshold').value),
+                swapWarn: parseFloat(document.getElementById('swapWarnThreshold').value),
+                instMemWarn: parseFloat(document.getElementById('instMemWarnThreshold').value),
+                fragWarn: parseFloat(document.getElementById('fragWarnThreshold').value),
+                connWarn: parseFloat(document.getElementById('connWarnThreshold').value),
+                latencyWarn: parseFloat(document.getElementById('latencyWarnThreshold').value),
+                healthWarn: parseFloat(document.getElementById('healthWarnThreshold').value),
+                replDelayWarn: parseFloat(document.getElementById('replDelayWarnThreshold').value),
+                slotWarn: parseFloat(document.getElementById('slotWarnThreshold').value)
+            };
+            
+            localStorage.setItem('monitorThresholds', JSON.stringify(thresholds));
+            
+            const modal = bootstrap.Modal.getInstance(document.getElementById('thresholdModal'));
+            modal.hide();
+            
+            showToast('阈值配置已保存', 'success');
+            refreshAllData();
+        }
+    </script>
+</body>
+</html>

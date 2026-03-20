@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('首页')"></head>
+<body>
+    <!-- 首页自定义样式：压缩统计卡片高度 -->
+    <style>
+        .stat-card {
+            padding: 12px 16px;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            margin: 4px 0;
+        }
+    </style>
+    
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('仪表盘')"></header>
+        
+        <div class="content-container">
+            <!-- 性能优化提示 -->
+            <div class="alert alert-info d-flex align-items-center mb-4 animate-fade-in" role="alert" style="animation-delay: 0.05s;">
+                <i class="bi bi-lightning-charge-fill me-2"></i>
+                <div>
+                    <strong>性能优化：</strong>首页数据已从实时 SSH 查询优化为数据库缓存查询，加载速度提升显著。
+                    <strong>定时刷新：</strong>系统每 <span class="badge bg-secondary">10分钟</span> 自动连接服务器更新全部集群信息状态，也可点击下方"刷新"按钮手动触发即时更新。
+                </div>
+                <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="row g-4 mb-4">
+                <div class="col-md-6 col-lg-3">
+                    <div class="stat-card primary animate-fade-in" style="animation-delay: 0.1s;">
+                        <div class="stat-label">创建集群数</div>
+                        <div class="stat-value" id="createdClusterCount">
+                            <span class="animate-pulse">--</span>
+                        </div>
+                        <div class="stat-change">
+                            <i class="bi bi-hdd-rack"></i>
+                            <span>创建的集群</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="stat-card success animate-fade-in" style="animation-delay: 0.2s;">
+                        <div class="stat-label">导入集群数</div>
+                        <div class="stat-value" id="importedClusterCount">
+                            <span class="animate-pulse">--</span>
+                        </div>
+                        <div class="stat-change">
+                            <i class="bi bi-download"></i>
+                            <span>导入的集群</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="stat-card info animate-fade-in" style="animation-delay: 0.3s;">
+                        <div class="stat-label">
+                            服务器组数
+                            <i class="bi bi-question-circle text-white ms-1" style="cursor: pointer; font-size: 0.7rem; opacity: 0.8;" onclick="showServerGroupInfo()"></i>
+                        </div>
+                        <div class="stat-value" id="serverGroupCount">
+                            <span class="animate-pulse">--</span>
+                        </div>
+                        <div class="stat-change">
+                            <i class="bi bi-layers"></i>
+                            <span>服务器组</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="stat-card warning animate-fade-in" style="animation-delay: 0.4s;">
+                        <div class="stat-label">
+                            缓存节点数
+                            <i class="bi bi-question-circle text-white ms-1" style="cursor: pointer; font-size: 0.7rem; opacity: 0.8;" onclick="showTotalNodesInfo()"></i>
+                        </div>
+                        <div class="stat-value" id="totalNodeCount">
+                            <span class="animate-pulse">--</span>
+                        </div>
+                        <div class="stat-change">
+                            <i class="bi bi-hdd-stack"></i>
+                            <span>缓存服务节点</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cluster Status Overview -->
+            <div class="card animate-fade-in" style="animation-delay: 0.5s;">
+                <div class="card-header d-flex flex-wrap align-items-center gap-3">
+                    <h6 class="mb-0"><i class="bi bi-bar-chart-line"></i> 集群状态概览</h6>
+                    
+                    <!-- 列显示控制 -->
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="small text-muted">显示列:</span>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="checkbox" id="showMemoryRate" onchange="onColumnToggle()">
+                            <label class="form-check-label small" for="showMemoryRate">内存占比</label>
+                        </div>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="checkbox" id="showHealth" onchange="onColumnToggle()">
+                            <label class="form-check-label small" for="showHealth">健康度</label>
+                        </div>
+                    </div>
+                    
+                    <!-- 服务器组筛选 -->
+                    <div class="d-flex align-items-center gap-2 ms-auto">
+                        <label class="form-label mb-0 small text-muted">服务器组:</label>
+                        <select class="form-select form-select-sm" id="groupFilter" style="width: 220px; height: 31px; padding-top: 0.25rem; padding-bottom: 0.25rem;" onchange="onGroupFilterChange()">
+                            <option value="">全部</option>
+                        </select>
+                        <button id="manualRefresh" class="btn btn-sm btn-outline-primary" style="height: 31px; padding-top: 0.25rem; padding-bottom: 0.25rem;" onclick="showRefreshConfirm()">
+                            <i class="bi bi-arrow-clockwise"></i> 刷新
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>集群名称</th>
+                                    <th>归属服务器组</th>
+                                    <th>集群类型</th>
+                                    <th>集群状态
+                                        <i class="bi bi-question-circle text-primary ms-1" style="cursor: pointer; font-size: 0.75rem;" onclick="showStatusInfo()"></i>
+                                    </th>
+                                    <th>节点数</th>
+                                    <th>运行中</th>
+                                    <th>
+                                        总内存使用
+                                        <i class="bi bi-question-circle text-primary ms-1" style="cursor: pointer; font-size: 0.75rem;" 
+                                           onclick="showMemoryInfo()"></i>
+                                    </th>
+                                    <th>
+                                        总内存限制
+                                        <i class="bi bi-question-circle text-primary ms-1" style="cursor: pointer; font-size: 0.75rem;" 
+                                           onclick="showMaxMemoryInfo()"></i>
+                                    </th>
+                                    <th class="col-memory-rate d-none">
+                                        内存占比
+                                        <i class="bi bi-question-circle text-primary ms-1" style="cursor: pointer; font-size: 0.75rem;" 
+                                           onclick="showMemoryRateInfo()"></i>
+                                    </th>
+                                    <th>
+                                        总连接数
+                                        <i class="bi bi-question-circle text-primary ms-1" style="cursor: pointer; font-size: 0.75rem;" 
+                                           onclick="showClientsInfo()"></i>
+                                    </th>
+                                    <th class="col-health d-none">
+                                        健康度
+                                        <i class="bi bi-question-circle text-primary ms-1" style="cursor: pointer; font-size: 0.75rem;" onclick="showHealthInfo()"></i>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="clusterTable">
+                                <tr>
+                                    <td colspan="9" class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- 分页控件 -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-3 border-top">
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="text-muted small">共 <span id="totalClusters">0</span> 个集群</span>
+                            <div class="d-flex align-items-center gap-2">
+                                <label class="form-label mb-0 small text-muted">每页显示：</label>
+                                <select class="form-select form-select-sm" id="pageSize" style="width: 70px; height: 31px; padding-top: 0.25rem; padding-bottom: 0.25rem;" onchange="onPageSizeChange()">
+                                    <option value="5" selected>5</option>
+                                    <option value="10">10</option>
+                                </select>
+                                <span class="small text-muted">条</span>
+                            </div>
+                        </div>
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination pagination-sm mb-0" id="pagination">
+                                <!-- 分页按钮由JS生成 -->
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 加载提示模态框 -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="background: rgba(255, 255, 255, 0.95);">
+                <div class="modal-body text-center py-5">
+                    <div class="mb-4">
+                        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                    <h5 class="modal-title mb-2 text-primary">
+                        <i class="bi bi-hdd-rack"></i> 正在查询集群状态
+                    </h5>
+                    <p class="text-muted mb-0">系统后台正在努力连接所有集群获取实时数据，请稍候...</p>
+                    <div class="mt-3 small text-secondary">
+                        <i class="bi bi-clock-history"></i> 首次加载可能需要 10-30 秒
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 调试信息弹窗 -->
+    <div class="modal fade" id="debugInfoModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width: 95%;">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="bi bi-bug"></i> 集群查询调试信息</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
+                    <div id="debugInfoContent">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">正在获取调试信息...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" onclick="loadDebugInfo()">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 内存使用说明弹框 -->
+    <div class="modal fade" id="memoryInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-memory"></i> 总内存使用说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">
+                            <strong>统计对象：</strong>仅统计 <span class="badge bg-danger">3个主节点</span> 的内存使用
+                        </li>
+                        <li class="list-group-item">
+                            <strong>数据来源：</strong>Redis INFO 命令的 <code>used_memory</code> 字段
+                        </li>
+                        <li class="list-group-item">
+                            <strong>单位：</strong>MB（自动转换为GB显示，大于1024MB时）
+                        </li>
+                        <li class="list-group-item">
+                            <strong>计算方式：</strong>3个主节点的 used_memory 数值相加（字节转MB）
+                        </li>
+                        <li class="list-group-item">
+                            <strong>说明：</strong>不包含从节点的内存使用
+                        </li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 内存限制说明弹框 -->
+    <div class="modal fade" id="maxMemoryInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-memory"></i> 总内存限制说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">
+                            <strong>统计对象：</strong>仅统计 <span class="badge bg-danger">3个主节点</span> 的内存限制
+                        </li>
+                        <li class="list-group-item">
+                            <strong>数据来源：</strong>Redis INFO 命令的 <code>maxmemory</code> 字段
+                        </li>
+                        <li class="list-group-item">
+                            <strong>配置位置：</strong>redis.conf 中的 <code>maxmemory</code> 配置项
+                        </li>
+                        <li class="list-group-item">
+                            <strong>单位：</strong>MB（自动转换为GB显示，大于1024MB时）
+                        </li>
+                        <li class="list-group-item">
+                            <strong>计算方式：</strong>3个主节点的 maxmemory 数值相加（字节转MB）
+                        </li>
+                        <li class="list-group-item">
+                            <strong>说明：</strong>这是集群可用于存储数据的理论最大内存上限
+                        </li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 内存占比说明弹框 -->
+    <div class="modal fade" id="memoryRateInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-memory"></i> 内存占比说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="p-3 bg-light rounded mb-3">
+                        <code>内存占比 = (内存使用 MB / 内存限制 MB) × 100%</code>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">
+                            <strong>统计对象：</strong>仅针对 <span class="badge bg-danger">3个主节点</span> 计算
+                        </li>
+                        <li class="list-group-item">
+                            <strong>单位：</strong>基于MB计算
+                        </li>
+                        <li class="list-group-item">
+                            <strong>颜色说明：</strong>
+                            <span class="badge bg-success">&lt; 70%</span> 健康
+                            <span class="badge bg-warning ms-1">70% - 90%</span> 警告
+                            <span class="badge bg-danger ms-1">&gt; 90%</span> 危险
+                        </li>
+                        <li class="list-group-item">
+                            <strong>建议：</strong>当占比超过 90% 时，建议扩容或清理数据
+                        </li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 连接数说明弹框 -->
+    <div class="modal fade" id="clientsInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-memory"></i> 总连接数说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">
+                            <strong>统计对象：</strong>仅统计 <span class="badge bg-danger">3个主节点</span> 的客户端连接
+                        </li>
+                        <li class="list-group-item">
+                            <strong>数据来源：</strong>Redis INFO 命令的 <code>connected_clients</code> 字段
+                        </li>
+                        <li class="list-group-item">
+                            <strong>采集方式：</strong>每30秒自动采集一次
+                        </li>
+                        <li class="list-group-item">
+                            <strong>计算方式：</strong>3个主节点的 connected_clients 数值相加
+                        </li>
+                        <li class="list-group-item">
+                            <strong>说明：</strong>不包含集群内部节点间的连接
+                        </li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 状态说明弹框 -->
+    <div class="modal fade" id="statusInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-info-circle"></i> 状态说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>状态</th>
+                                <th>说明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-warning">创建中</span></td>
+                                <td>集群正在创建或初始化中</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-success">运行中</span></td>
+                                <td>集群正常运行</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-secondary">已停止</span></td>
+                                <td>集群已停止运行</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-danger">异常</span></td>
+                                <td>集群存在异常，需要检查</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 健康度说明弹框 -->
+    <div class="modal fade" id="healthInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-memory"></i> 健康度说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="p-3 bg-light rounded mb-3">
+                        <code>健康度 = (运行中节点数 / 总节点数) × 100%</code>
+                    </div>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>健康度范围</th>
+                                <th>评估</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-success">≥ 80%</span></td>
+                                <td>健康 - 集群运行良好</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-warning">50% - 79%</span></td>
+                                <td>警告 - 部分节点可能存在问题</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-danger">&lt; 50%</span></td>
+                                <td>危险 - 大量节点异常，需立即处理</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 刷新确认弹窗 -->
+    <div class="modal fade" id="refreshConfirmModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2"></i>确认刷新集群状态</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        <strong>该操作将扫描全部集群状态信息</strong>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex align-items-center">
+                            <i class="bi bi-hdd-rack text-primary me-3 fs-5"></i>
+                            <div>
+                                <div class="fw-bold">连接所有集群节点</div>
+                                <small class="text-muted">通过 SSH 连接到每个集群的主节点</small>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex align-items-center">
+                            <i class="bi bi-speedometer2 text-success me-3 fs-5"></i>
+                            <div>
+                                <div class="fw-bold">采集实时监控数据</div>
+                                <small class="text-muted">获取内存使用、连接数等最新指标</small>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex align-items-center">
+                            <i class="bi bi-clock-history text-warning me-3 fs-5"></i>
+                            <div>
+                                <div class="fw-bold">耗时较长，请耐心等待</div>
+                                <small class="text-muted">根据集群数量，可能需要 10-60 秒</small>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="executeRefresh()">
+                        <i class="bi bi-arrow-clockwise me-1"></i>确认刷新
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 刷新执行状态弹窗 -->
+    <div class="modal fade" id="refreshProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>正在刷新集群状态</h5>
+                </div>
+                <div class="modal-body py-4">
+                    <div class="text-center mb-4">
+                        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="progress mb-3" style="height: 8px;">
+                        <div id="refreshProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div class="text-center">
+                        <p id="refreshStatusText" class="mb-0 text-muted">正在连接集群节点...</p>
+                        <small id="refreshDetailText" class="text-secondary">已处理 0 / 0 个集群</small>
+                    </div>
+                    <div class="alert alert-info mt-3 mb-0 small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        刷新完成前请勿关闭此窗口
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="refreshCloseBtn" class="btn btn-secondary" data-bs-dismiss="modal" disabled>关闭</button>
+                    <button type="button" id="refreshDoneBtn" class="btn btn-success d-none" data-bs-dismiss="modal">
+                        <i class="bi bi-check-circle me-1"></i>完成
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-home');
+
+        // 分页和筛选状态
+        let currentPage = 1;
+        let pageSize = 5;
+        let currentGroupId = '';
+        let totalPages = 1;
+        let allServerGroups = [];
+        let loadingModal = null;
+
+        // 初始化页面
+        async function initPage() {
+            loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+            await loadServerGroups();
+            // 同时加载全局统计和列表数据（统计从数据库直接获取，速度较快）
+            await Promise.all([loadGlobalStatistics(), loadOverview()]);
+        }
+
+        // 显示加载提示（仅在需要实时查询集群状态时使用）
+        function showLoading() {
+            if (loadingModal) {
+                loadingModal.show();
+            }
+        }
+
+        // 隐藏加载提示
+        function hideLoading() {
+            if (loadingModal) {
+                loadingModal.hide();
+            }
+        }
+
+        // 显示刷新确认弹窗
+        function showRefreshConfirm() {
+            const modal = new bootstrap.Modal(document.getElementById('refreshConfirmModal'));
+            modal.show();
+        }
+
+        // 执行刷新操作
+        async function executeRefresh() {
+            // 关闭确认弹窗
+            const confirmModal = bootstrap.Modal.getInstance(document.getElementById('refreshConfirmModal'));
+            confirmModal.hide();
+            
+            // 显示执行进度弹窗
+            const progressModal = new bootstrap.Modal(document.getElementById('refreshProgressModal'));
+            progressModal.show();
+            
+            // 重置进度状态
+            updateRefreshProgress(10, '正在连接服务器...', '准备刷新所有集群');
+            
+            try {
+                // 调用后端批量刷新接口
+                updateRefreshProgress(30, '正在采集集群数据...', '请耐心等待，这可能需要一些时间');
+                
+                const result = await refreshAllClustersRealtime();
+                
+                if (result.code === 200) {
+                    const data = result.data;
+                    updateRefreshProgress(90, '正在更新数据...', `成功: ${data.success} 个, 失败: ${data.failed} 个`);
+                    
+                    // 刷新列表数据
+                    await Promise.all([loadGlobalStatistics(), loadOverview()]);
+                    
+                    updateRefreshProgress(100, '刷新完成！', `总计 ${data.total} 个集群，成功 ${data.success} 个`);
+                } else {
+                    updateRefreshProgress(100, '刷新失败', result.message || '未知错误');
+                }
+                
+                showRefreshComplete();
+            } catch (e) {
+                console.error('刷新失败:', e);
+                updateRefreshProgress(100, '刷新失败', e.message || '网络错误');
+                showRefreshComplete();
+            }
+        }
+
+        // 更新刷新进度
+        function updateRefreshProgress(percent, statusText, detailText) {
+            const progressBar = document.getElementById('refreshProgressBar');
+            const statusEl = document.getElementById('refreshStatusText');
+            const detailEl = document.getElementById('refreshDetailText');
+            
+            if (progressBar) progressBar.style.width = percent + '%';
+            if (statusEl) statusEl.textContent = statusText;
+            if (detailEl) detailEl.textContent = detailText;
+        }
+
+        // 显示刷新完成状态
+        function showRefreshComplete() {
+            const closeBtn = document.getElementById('refreshCloseBtn');
+            const doneBtn = document.getElementById('refreshDoneBtn');
+            
+            if (closeBtn) closeBtn.disabled = false;
+            if (doneBtn) doneBtn.classList.remove('d-none');
+        }
+
+        // 获取所有集群列表
+        async function fetchAllClusters() {
+            try {
+                const res = await axios.get('/api/clusters');
+                if (res.data.code === 200) {
+                    return res.data.data || [];
+                }
+            } catch (e) {
+                console.error('获取集群列表失败:', e);
+            }
+            return [];
+        }
+
+        // 实时刷新单个集群
+        async function refreshClusterRealtime(clusterId) {
+            try {
+                // 调用监控服务接口触发实时数据刷新
+                await axios.post(`/api/monitor/clusters/${clusterId}/refresh`);
+            } catch (e) {
+                throw e;
+            }
+        }
+
+        // 实时刷新所有集群（批量）
+        async function refreshAllClustersRealtime() {
+            try {
+                const res = await axios.post('/api/monitor/clusters/refresh');
+                return res.data;
+            } catch (e) {
+                throw e;
+            }
+        }
+
+        // 延迟函数
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // 列显示控制
+        function onColumnToggle() {
+            const showMemoryRate = document.getElementById('showMemoryRate').checked;
+            const showHealth = document.getElementById('showHealth').checked;
+            
+            // 控制表头显示/隐藏
+            document.querySelectorAll('.col-memory-rate').forEach(el => {
+                el.classList.toggle('d-none', !showMemoryRate);
+            });
+            document.querySelectorAll('.col-health').forEach(el => {
+                el.classList.toggle('d-none', !showHealth);
+            });
+            
+            // 控制表格数据列显示/隐藏
+            document.querySelectorAll('.td-memory-rate').forEach(el => {
+                el.classList.toggle('d-none', !showMemoryRate);
+            });
+            document.querySelectorAll('.td-health').forEach(el => {
+                el.classList.toggle('d-none', !showHealth);
+            });
+        }
+
+        // 加载全局统计数据（首页顶部统计卡片）
+        async function loadGlobalStatistics() {
+            try {
+                let url = '/api/monitor/global-statistics';
+                if (currentGroupId) {
+                    url += `?groupId=${currentGroupId}`;
+                }
+                
+                const res = await axios.get(url);
+                if (res.data.code === 200) {
+                    const stats = res.data.data;
+                    animateValue('createdClusterCount', stats.createdClusters || 0);
+                    animateValue('importedClusterCount', stats.importedClusters || 0);
+                    animateValue('serverGroupCount', stats.serverGroupCount || 0);
+                    animateValue('totalNodeCount', stats.totalNodes || 0);
+                }
+            } catch (error) {
+                console.error('加载全局统计数据失败:', error);
+            }
+        }
+
+        // 加载服务器组列表
+        async function loadServerGroups() {
+            try {
+                const res = await axios.get('/api/groups');
+                if (res.data.code === 200) {
+                    allServerGroups = res.data.data || [];
+                    const select = document.getElementById('groupFilter');
+                    
+                    // 保存当前选择
+                    const currentSelection = select.value;
+                    
+                    // 重新生成选项
+                    let html = '<option value="">全部服务器组</option>';
+                    allServerGroups.forEach(group => {
+                        const isDefault = group.isDefault === 1;
+                        const defaultMark = isDefault ? ' ★' : '';
+                        html += `<option value="${group.id}" ${isDefault ? 'class="text-primary fw-bold"' : ''}>${group.name}${defaultMark}</option>`;
+                    });
+                    select.innerHTML = html;
+                    
+                    // 恢复选择或选中默认值
+                    if (currentSelection) {
+                        select.value = currentSelection;
+                    } else {
+                        // 查找默认服务器组
+                        const defaultGroup = allServerGroups.find(g => g.isDefault === 1);
+                        if (defaultGroup) {
+                            select.value = defaultGroup.id;
+                            currentGroupId = defaultGroup.id;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('加载服务器组失败:', error);
+            }
+        }
+
+        // 服务器组筛选变化
+        async function onGroupFilterChange() {
+            const select = document.getElementById('groupFilter');
+            currentGroupId = select.value;
+            currentPage = 1; // 重置到第一页
+            await Promise.all([loadGlobalStatistics(), loadOverview()]);
+        }
+
+        // 每页条数变化
+        async function onPageSizeChange() {
+            const select = document.getElementById('pageSize');
+            pageSize = parseInt(select.value);
+            currentPage = 1; // 重置到第一页
+            await loadOverview();
+        }
+
+        // 切换页面
+        async function goToPage(page) {
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            await loadOverview();
+        }
+
+        // 加载概览数据
+        async function loadOverview() {
+            try {
+                // 构建查询参数
+                let url = `/api/monitor/clusters?page=${currentPage}&size=${pageSize}`;
+                if (currentGroupId) {
+                    url += `&groupId=${currentGroupId}`;
+                }
+
+                const clusterRes = await axios.get(url);
+
+                if (clusterRes.data.code === 200) {
+                    const pageData = clusterRes.data.data;
+                    const clusters = pageData.content || [];
+                    totalPages = pageData.totalPages || 1;
+                    const totalElements = pageData.totalElements || 0;
+                    
+                    // 更新分页信息
+                    document.getElementById('totalClusters').textContent = totalElements;
+                    renderPagination();
+
+                    const tbody = document.querySelector('#clusterTable');
+                    tbody.innerHTML = '';
+
+                    if (clusters.length === 0) {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="9" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                    暂无集群数据
+                                </td>
+                            </tr>
+                        `;
+                    } else {
+                        clusters.forEach((cluster, index) => {
+                            const healthRate = cluster.totalNodes > 0 ? 
+                                Math.round(cluster.runningNodes / cluster.totalNodes * 100) : 0;
+                            
+                            // 集群类型标签
+                            const typeBadge = cluster.clusterType === 1 ? 
+                                '<span class="badge bg-danger"><i class="bi bi-download me-1"></i>导入</span>' : 
+                                '<span class="badge bg-primary"><i class="bi bi-hdd-rack me-1"></i>创建</span>';
+                            
+                            let statusBadge = '';
+                            // 状态: 0-创建中, 1-运行中, 2-已停止, 3-异常
+                            switch(cluster.status) {
+                                case 0: statusBadge = '<span class="badge bg-warning"><span class="spinner-border spinner-border-sm me-1"></span>创建中</span>'; break;
+                                case 1: statusBadge = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>运行中</span>'; break;
+                                case 2: statusBadge = '<span class="badge bg-secondary"><i class="bi bi-pause-circle me-1"></i>已停止</span>'; break;
+                                case 3: statusBadge = '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>异常</span>'; break;
+                                default: statusBadge = '<span class="badge bg-light text-dark">未知</span>'; break;
+                            }
+                            
+                            // 内存使用占比颜色和样式
+                            const memRate = cluster.memoryUsageRate || 0;
+                            const memRateClass = memRate >= 90 ? 'text-danger fw-bold' : memRate >= 70 ? 'text-warning' : 'text-success';
+                            const memRateBg = memRate >= 90 ? 'bg-danger' : memRate >= 70 ? 'bg-warning' : 'bg-success';
+                            
+                            const row = document.createElement('tr');
+                            row.style.animationDelay = `${index * 0.05}s`;
+                            row.className = 'animate-fade-in';
+                            row.innerHTML = `
+                                <td>
+                                    <a href="/clusters/${cluster.clusterId}" class="text-decoration-none fw-bold" title="查看详情">
+                                        ${cluster.clusterName}
+                                        <i class="bi bi-box-arrow-up-right ms-1 small text-muted"></i>
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="text-muted small">${cluster.serverGroupName || '-'}</span>
+                                </td>
+                                <td>${typeBadge}</td>
+                                <td>${statusBadge}</td>
+                                <td>${formatNumber(cluster.totalNodes)}</td>
+                                <td><span class="status-dot ${cluster.runningNodes === cluster.totalNodes ? 'online' : 'warning'}"></span>${formatNumber(cluster.runningNodes)}</td>
+                                <td>${formatMemoryMB(cluster.usedMemory || 0)}</td>
+                                <td>${formatMemoryMB(cluster.maxMemory || 0)}</td>
+                                <td class="td-memory-rate d-none">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress" style="width: 50px; height: 6px;">
+                                            <div class="progress-bar ${memRateBg}" style="width: ${memRate}%"></div>
+                                        </div>
+                                        <span class="small ${memRateClass}">${memRate.toFixed(2)}%</span>
+                                    </div>
+                                </td>
+                                <td>${formatNumber(cluster.connectedClients)}</td>
+                                <td class="td-health d-none">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress" style="width: 50px; height: 6px;">
+                                            <div class="progress-bar ${healthRate >= 80 ? 'bg-success' : healthRate >= 50 ? 'bg-warning' : 'bg-danger'}" style="width: ${healthRate}%"></div>
+                                        </div>
+                                        <span class="small">${healthRate}%</span>
+                                    </div>
+                                </td>
+                            `;
+                            tbody.appendChild(row);
+                        });
+                    }
+
+                }
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                showToast('加载数据失败', 'error');
+            }
+        }
+
+        // 渲染分页控件
+        function renderPagination() {
+            const pagination = document.getElementById('pagination');
+            
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            
+            // 上一页
+            html += `
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToPage(${currentPage - 1})">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                </li>
+            `;
+            
+            // 页码
+            const maxButtons = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+            let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+            
+            if (endPage - startPage < maxButtons - 1) {
+                startPage = Math.max(1, endPage - maxButtons + 1);
+            }
+            
+            if (startPage > 1) {
+                html += `<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToPage(1)">1</a></li>`;
+                if (startPage > 2) {
+                    html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+                }
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                html += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="javascript:void(0)" onclick="goToPage(${i})">${i}</a>
+                    </li>
+                `;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+                }
+                html += `<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToPage(${totalPages})">${totalPages}</a></li>`;
+            }
+            
+            // 下一页
+            html += `
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToPage(${currentPage + 1})">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+            `;
+            
+            pagination.innerHTML = html;
+        }
+
+        // 数字动画
+        function animateValue(id, value) {
+            const element = document.getElementById(id);
+            const start = parseInt(element.textContent) || 0;
+            const duration = 1000;
+            const startTime = performance.now();
+
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                const current = Math.round(start + (value - start) * easeProgress);
+                element.textContent = formatNumber(current);
+                
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                }
+            }
+            
+            requestAnimationFrame(update);
+        }
+
+        // 格式化内存显示（MB为单位）
+        function formatMemoryMB(mb) {
+            if (mb === 0) return '0 MB';
+            if (mb < 1024) {
+                return mb.toFixed(0) + ' MB';
+            } else {
+                return (mb / 1024).toFixed(2) + ' GB';
+            }
+        }
+
+        // 状态和健康度说明弹框
+        function showStatusInfo() {
+            new bootstrap.Modal(document.getElementById('statusInfoModal')).show();
+        }
+        function showHealthInfo() {
+            new bootstrap.Modal(document.getElementById('healthInfoModal')).show();
+        }
+        
+        // 初始化 Bootstrap Tooltip
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+        
+        // 弹框显示函数
+        function showMemoryInfo() {
+            new bootstrap.Modal(document.getElementById('memoryInfoModal')).show();
+        }
+        function showMaxMemoryInfo() {
+            new bootstrap.Modal(document.getElementById('maxMemoryInfoModal')).show();
+        }
+        function showMemoryRateInfo() {
+            new bootstrap.Modal(document.getElementById('memoryRateInfoModal')).show();
+        }
+        function showClientsInfo() {
+            new bootstrap.Modal(document.getElementById('clientsInfoModal')).show();
+        }
+        
+        // 加载调试信息
+        async function loadDebugInfo() {
+            const modal = new bootstrap.Modal(document.getElementById('debugInfoModal'));
+            modal.show();
+            
+            const contentDiv = document.getElementById('debugInfoContent');
+            contentDiv.innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">正在获取调试信息...</p>
+                </div>
+            `;
+            
+            try {
+                const res = await axios.get('/api/monitor/clusters/debug');
+                if (res.data.code === 200) {
+                    renderDebugInfo(res.data.data);
+                } else {
+                    contentDiv.innerHTML = `<div class="alert alert-danger">获取失败: ${res.data.message}</div>`;
+                }
+            } catch (error) {
+                contentDiv.innerHTML = `<div class="alert alert-danger">获取失败: ${error.message}</div>`;
+            }
+        }
+        
+        // 渲染调试信息
+        function renderDebugInfo(clustersDebugInfo) {
+            const contentDiv = document.getElementById('debugInfoContent');
+            
+            if (!clustersDebugInfo || clustersDebugInfo.length === 0) {
+                contentDiv.innerHTML = '<div class="alert alert-info">没有集群数据</div>';
+                return;
+            }
+            
+            let html = '';
+            clustersDebugInfo.forEach((cluster, index) => {
+                const summary = cluster.summary || {};
+                html += `
+                    <div class="card mb-4 border-primary">
+                        <div class="card-header bg-primary text-white">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">${index + 1}. ${cluster.clusterName} (ID: ${cluster.clusterId})</h5>
+                                <span class="badge bg-light text-dark">状态: ${cluster.clusterStatus}</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <!-- 统计概览 -->
+                            <div class="alert alert-info">
+                                <h6><i class="bi bi-calculator"></i> 统计概览</h6>
+                                <div class="row">
+                                    <div class="col-md-3"><strong>总内存使用:</strong> ${summary.totalUsedMemoryMB || 0} MB</div>
+                                    <div class="col-md-3"><strong>总内存限制:</strong> ${summary.totalMaxMemoryMB || 0} MB</div>
+                                    <div class="col-md-3"><strong>总连接数:</strong> ${summary.totalConnectedClients || 0}</div>
+                                    <div class="col-md-3"><strong>内存占比:</strong> ${summary.memoryUsageRate || '0%'}</div>
+                                </div>
+                                <hr class="my-2">
+                                <div class="small text-muted">
+                                    <div><strong>计算公式:</strong></div>
+                                    <div>${summary.calculationFormula || ''}</div>
+                                    <div>${summary.maxMemoryFormula || ''}</div>
+                                    <div>${summary.clientsFormula || ''}</div>
+                                </div>
+                            </div>
+                            
+                            <!-- 主节点详情 -->
+                            <h6 class="mt-3"><i class="bi bi-hdd-stack"></i> 主节点查询详情 (共${cluster.masterNodesCount || 0}个)</h6>
+                `;
+                
+                const nodeDetails = cluster.nodeDetails || [];
+                nodeDetails.forEach((node, nodeIndex) => {
+                    const commands = node.commands || [];
+                    html += `
+                            <div class="card mb-3 ${node.error ? 'border-danger' : 'border-success'}">
+                                <div class="card-header ${node.error ? 'bg-danger text-white' : 'bg-success text-white'}">
+                                    <div class="d-flex justify-content-between">
+                                        <span>主节点 ${nodeIndex + 1}: ${node.nodeIp}:${node.nodePort}</span>
+                                        <span>状态: ${node.nodeStatus}</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    ${node.error ? `<div class="alert alert-danger"><strong>错误:</strong> ${node.error}</div>` : ''}
+                                    
+                                    <div class="row mb-3">
+                                        <div class="col-md-4">
+                                            <div class="p-2 bg-light rounded">
+                                                <small class="text-muted">内存使用</small>
+                                                <div class="h5 mb-0">${node.usedMemoryHuman || '0 MB'}</div>
+                                                <small class="text-muted">${node.usedMemoryBytes || 0} bytes</small>
+                                                ${node.usedMemoryCalculation ? `<div class="small text-success">${node.usedMemoryCalculation}</div>` : ''}
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="p-2 bg-light rounded">
+                                                <small class="text-muted">内存限制</small>
+                                                <div class="h5 mb-0">${node.maxMemoryHuman || '0 MB'}</div>
+                                                <small class="text-muted">${node.maxMemoryBytes || 0} bytes</small>
+                                                ${node.maxMemoryCalculation ? `<div class="small text-success">${node.maxMemoryCalculation}</div>` : ''}
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="p-2 bg-light rounded">
+                                                <small class="text-muted">连接数</small>
+                                                <div class="h5 mb-0">${node.connectedClients || 0}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <h6 class="mt-3"><i class="bi bi-terminal"></i> 执行的命令</h6>
+                                    <div class="accordion" id="commandsAccordion_${cluster.clusterId}_${nodeIndex}">
+                    `;
+                    
+                    commands.forEach((cmd, cmdIndex) => {
+                        html += `
+                                        <div class="accordion-item">
+                                            <h2 class="accordion-header">
+                                                <button class="accordion-button ${cmdIndex === 0 ? '' : 'collapsed'}" type="button" 
+                                                        data-bs-toggle="collapse" data-bs-target="#cmd_${cluster.clusterId}_${nodeIndex}_${cmdIndex}">
+                                                    <span class="badge bg-secondary me-2">${cmdIndex + 1}</span>
+                                                    ${cmd.name}
+                                                </button>
+                                            </h2>
+                                            <div id="cmd_${cluster.clusterId}_${nodeIndex}_${cmdIndex}" class="accordion-collapse collapse ${cmdIndex === 0 ? 'show' : ''}"
+                                                 data-bs-parent="#commandsAccordion_${cluster.clusterId}_${nodeIndex}">
+                                                <div class="accordion-body">
+                                                    <div class="mb-2">
+                                                        <strong>命令:</strong>
+                                                        <pre class="bg-dark text-light p-2 rounded mb-0"><code>${escapeHtml(cmd.command)}</code></pre>
+                                                    </div>
+                                                    <div class="mb-2">
+                                                        <strong>返回结果 (stdout):</strong>
+                                                        <pre class="bg-light p-2 rounded mb-0 border">${escapeHtml(cmd.stdout) || '(empty)'}</pre>
+                                                    </div>
+                                                    ${cmd.stderr ? `
+                                                    <div class="mb-2">
+                                                        <strong>错误输出 (stderr):</strong>
+                                                        <pre class="bg-warning p-2 rounded mb-0">${escapeHtml(cmd.stderr)}</pre>
+                                                    </div>
+                                                    ` : ''}
+                                                    <div class="small text-muted">退出码: ${cmd.exitCode}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                        `;
+                    });
+                    
+                    html += `
+                                    </div>
+                                    
+                                    ${node.pingResult ? `
+                                    <div class="mt-3">
+                                        <strong>PING结果:</strong> 
+                                        <span class="badge ${node.pingResult === 'PONG' ? 'bg-success' : 'bg-danger'}">${node.pingResult}</span>
+                                        ${node.pingError ? `<span class="text-danger ms-2">${node.pingError}</span>` : ''}
+                                    </div>
+                                    ` : ''}
+                                    
+                                    <div class="mt-3 small text-muted">
+                                        <strong>SSH连接:</strong> ${node.sshInfo ? `${node.sshInfo.serverIp}:${node.sshInfo.sshPort} (${node.sshInfo.sshUser})` : 'unknown'}
+                                    </div>
+                                </div>
+                            </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+            
+            contentDiv.innerHTML = html;
+        }
+        
+        // HTML转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // 初始化 - 加载服务器组和集群数据
+        initPage();
+    </script>
+</body>
+</html>

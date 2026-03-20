@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('配置模板')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('配置模板')"></header>
+        
+        <div class="content-container">
+            <!-- Action Bar -->
+            <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+                <p class="text-muted mb-0">管理Redis配置文件模板，支持变量替换</p>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-info" onclick="showConfigHelp()">
+                        <i class="bi bi-question-circle"></i> 配置项说明
+                    </button>
+                    <button class="btn btn-primary" onclick="showCreateModal()">
+                        <i class="bi bi-plus-lg"></i> 新建模板
+                    </button>
+                </div>
+            </div>
+
+            <!-- Templates Grid -->
+            <div class="row g-4" id="templatesContainer">
+                <!-- 动态加载 -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Template Modal (Create/Edit) -->
+    <div class="modal fade" id="templateModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle"><i class="bi bi-file-code"></i> 新建模板</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="templateId">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">模板名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="templateName" placeholder="例如: Redis 6.x 默认模板">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">适配Redis版本 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="redisVersion">
+                                <option value="6.x" selected>Redis 6.x</option>
+                                <option value="5.x">Redis 5.x</option>
+                            </select>
+                            <div class="form-text text-muted">
+                                <small><i class="bi bi-info-circle"></i> 选择大版本即可，如 6.x 涵盖 6.0.x ~ 6.2.x</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">描述</label>
+                            <input type="text" class="form-control" id="templateDesc" placeholder="可选描述">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">默认AOF</label>
+                            <select class="form-select" id="defaultAof" onchange="updateTemplateContentPreview()">
+                                <option value="true">开启</option>
+                                <option value="false">关闭</option>
+                            </select>
+                            <div class="form-text text-muted">
+                                <small><i class="bi bi-info-circle"></i> AOF持久化记录每个写操作，数据更安全但性能略低</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">AOF策略</label>
+                            <select class="form-select" id="defaultAofPolicy" onchange="updateTemplateContentPreview()">
+                                <option value="always">always - 每次写入都同步，最安全但最慢</option>
+                                <option value="everysec" selected>everysec - 每秒同步，平衡性能与安全</option>
+                                <option value="no">no - 由操作系统决定，最快但不安全</option>
+                            </select>
+                            <div class="form-text text-muted">
+                                <small><i class="bi bi-info-circle"></i> AOF文件的同步频率，影响数据安全性和写入性能</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">集群配置目录</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-folder"></i></span>
+                                <input type="text" class="form-control" id="clusterConfigDir" value="/opt/redis-cluster" placeholder="例如: /opt/redis-cluster" onchange="updateTemplateContentPreview()">
+                            </div>
+                            <div class="form-text text-muted">
+                                <small><i class="bi bi-info-circle"></i> 系统会在该目录下分别创建 conf、data、nodes 和 logs 文件夹</small>
+                            </div>
+                        </div>
+                        <!-- 危险命令禁用配置 -->
+                        <div class="col-12">
+                            <label class="form-label"><i class="bi bi-shield-exclamation text-warning"></i> 危险命令禁用配置</label>
+                            <div class="card border-warning">
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <div class="form-check">
+                                                <input class="form-check-input danger-command-check" type="checkbox" id="disableKeys" checked data-command="KEYS">
+                                                <label class="form-check-label" for="disableKeys">
+                                                    <code>KEYS</code> 命令
+                                                    <small class="text-muted d-block">遍历所有键，大数据量时阻塞</small>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-check">
+                                                <input class="form-check-input danger-command-check" type="checkbox" id="disableFlushdb" checked data-command="FLUSHDB">
+                                                <label class="form-check-label" for="disableFlushdb">
+                                                    <code>FLUSHDB</code> 命令
+                                                    <small class="text-muted d-block">清空当前数据库</small>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-check">
+                                                <input class="form-check-input danger-command-check" type="checkbox" id="disableFlushall" checked data-command="FLUSHALL">
+                                                <label class="form-check-label" for="disableFlushall">
+                                                    <code>FLUSHALL</code> 命令
+                                                    <small class="text-muted d-block">清空所有数据库</small>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-text text-warning mt-2">
+                                        <small><i class="bi bi-exclamation-triangle"></i> 取消勾选将允许使用该命令，但可能影响集群性能</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- EVAL/EVALSHA 命令替换配置 -->
+                        <div class="col-12">
+                            <label class="form-label"><i class="bi bi-shuffle text-info"></i> Lua脚本命令替换配置</label>
+                            <div class="card border-info">
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" id="renameEval">
+                                                <label class="form-check-label" for="renameEval">
+                                                    替换 <code>EVAL</code> 命令名称
+                                                    <small class="text-muted d-block">将EVAL命令重命名为自定义名称</small>
+                                                </label>
+                                            </div>
+                                            <div class="input-group">
+                                                <span class="input-group-text text-muted">rename-command EVAL</span>
+                                                <input type="text" class="form-control" id="renameEvalName" placeholder='例如: MY_EVAL' disabled>
+                                            </div>
+                                            <div class="form-text text-muted">
+                                                <small><i class="bi bi-exclamation-circle"></i> <b>注意：</b>勾选后如果不输入新名称（留空），则相当于<b>禁用</b>该命令</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" id="renameEvalsha">
+                                                <label class="form-check-label" for="renameEvalsha">
+                                                    替换 <code>EVALSHA</code> 命令名称
+                                                    <small class="text-muted d-block">将EVALSHA命令重命名为自定义名称</small>
+                                                </label>
+                                            </div>
+                                            <div class="input-group">
+                                                <span class="input-group-text text-muted">rename-command EVALSHA</span>
+                                                <input type="text" class="form-control" id="renameEvalshaName" placeholder='例如: MY_EVALSHA' disabled>
+                                            </div>
+                                            <div class="form-text text-muted">
+                                                <small><i class="bi bi-exclamation-circle"></i> <b>注意：</b>勾选后如果不输入新名称（留空），则相当于<b>禁用</b>该命令</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Redis 6.x 多线程配置 -->
+                        <div class="col-12" id="ioThreadsConfig" style="display: none;">
+                            <label class="form-label"><i class="bi bi-cpu text-primary"></i> 多线程 I/O 配置（Redis 6.x+ 特性）</label>
+                            <div class="card border-primary">
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">I/O 线程数</label>
+                                            <input type="number" class="form-control" id="ioThreadsCount" value="1" min="1" max="128">
+                                            <div class="form-text text-muted">
+                                                <small><i class="bi bi-info-circle"></i> 建议设置为 CPU 核心数减 1。官方建议：4核机器设置 2-3 个线程，8核机器设置 6 个线程。<br><b>注意：</b>设置后不能通过 CONFIG SET 动态修改</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check mt-4">
+                                                <input class="form-check-input" type="checkbox" id="ioThreadsDoReads">
+                                                <label class="form-check-label" for="ioThreadsDoReads">
+                                                    <i class="bi bi-lightning-charge text-warning"></i> 启用多线程读取
+                                                    <small class="text-muted d-block">将读取操作也分配到多线程处理</small>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label mb-0">模板内容 <span class="text-danger">*</span></label>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="refreshTemplateContent()">
+                                    <i class="bi bi-arrow-clockwise"></i> 刷新模板
+                                </button>
+                            </div>
+                            <textarea class="form-control font-monospace mb-2" id="templateContent" rows="15" style="font-size: 0.8125rem; background: #1f2937; color: #e5e7eb;"></textarea>
+                            <div class="card border-0 bg-light">
+                                <div class="card-body p-2">
+                                    <small class="text-muted d-block mb-1"><i class="bi bi-info-circle"></i> 支持以下占位符：</small>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th style="width: 18%; min-width: 100px;">占位符</th>
+                                                    <th style="width: 25%; min-width: 120px;">对应配置项</th>
+                                                    <th>说明</th>
+                                                    <th style="width: 20%; min-width: 100px;">示例值</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td><code>${PORT}</code></td>
+                                                    <td>port</td>
+                                                    <td>Redis实例端口号，根据节点顺序自动分配</td>
+                                                    <td>6379, 6380...</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>${NODE_IP}</code></td>
+                                                    <td>bind</td>
+                                                    <td>服务器IP地址，自动填充为服务器组配置的IP</td>
+                                                    <td>192.168.1.10</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>${MAX_MEMORY}</code></td>
+                                                    <td>maxmemory</td>
+                                                    <td>最大内存限制(MB)，创建集群时设置</td>
+                                                    <td>4096</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>${MAXMEMORY_POLICY}</code></td>
+                                                    <td>maxmemory-policy</td>
+                                                    <td>缓存淘汰策略，创建集群时选择</td>
+                                                    <td>allkeys-lru</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>${REQUIREPASS}</code></td>
+                                                    <td>requirepass</td>
+                                                    <td>客户端连接密码，留空则不设置密码</td>
+                                                    <td>mypassword</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>${MASTERAUTH}</code></td>
+                                                    <td>masterauth</td>
+                                                    <td>从节点连接主节点的密码，通常与requirepass相同</td>
+                                                    <td>mypassword</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveTemplate()">
+                        <i class="bi bi-save"></i> 保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Template Modal -->
+    <div class="modal fade" id="viewTemplateModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-eye"></i> 查看模板</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <h6 id="viewTemplateName" class="fw-bold"></h6>
+                        <p id="viewTemplateDesc" class="text-muted small"></p>
+                    </div>
+                    <div class="d-flex gap-2 mb-3">
+                        <span class="badge bg-light text-dark" id="viewVersion"></span>
+                        <span class="badge bg-light text-dark" id="viewMemory"></span>
+                        <span class="badge bg-light text-dark" id="viewAof"></span>
+                        <span class="badge bg-primary" id="viewDefault" style="display: none;">默认模板</span>
+                    </div>
+                    <div class="bg-light rounded p-3 border" style="background-color: #f8f9fa !important;">
+                        <pre class="m-0" style="font-size: 0.8rem; max-height: 400px; overflow-y: auto; color: #212529; background-color: transparent;"><code id="viewTemplateContent"></code></pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" id="viewEditBtn">
+                        <i class="bi bi-pencil"></i> 编辑
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Help Modal -->
+    <div class="modal fade" id="configHelpModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-book"></i> Redis配置项说明</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="accordion" id="configAccordion">
+                        <!-- Redis 5 & 6 通用配置 -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#commonConfig">
+                                    <i class="bi bi-gear me-2"></i> Redis 5.x & 6.x 通用配置
+                                    <span class="badge bg-primary ms-2">通用</span>
+                                </button>
+                            </h2>
+                            <div id="commonConfig" class="accordion-collapse collapse show" data-bs-parent="#configAccordion">
+                                <div class="accordion-body">
+                                    <div class="alert alert-info">
+                                        <i class="bi bi-info-circle me-2"></i>以下配置项适用于 <strong>Redis 5.x 和 Redis 6.x</strong> 所有版本
+                                    </div>
+                                    <table class="table table-sm">
+                                        <thead><tr><th style="width: 30%;">配置项</th><th>说明</th></tr></thead>
+                                        <tbody>
+                                            <tr><td><code>port</code></td><td>Redis服务监听的端口号，默认6379</td></tr>
+                                            <tr><td><code>bind</code></td><td>绑定的IP地址，建议设置为服务器内网IP</td></tr>
+                                            <tr><td><code>daemonize</code></td><td>是否以守护进程方式运行，建议yes</td></tr>
+                                            <tr><td><code>dir</code></td><td>数据文件存储目录</td></tr>
+                                            <tr><td><code>pidfile</code></td><td>进程ID文件路径</td></tr>
+                                            <tr><td><code>logfile</code></td><td>日志文件路径</td></tr>
+                                            <tr><td><code>maxmemory</code></td><td>最大内存限制，达到上限后会根据策略淘汰数据</td></tr>
+                                            <tr><td><code>maxmemory-policy</code></td><td>内存淘汰策略：noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-random, volatile-ttl, allkeys-lfu, volatile-lfu</td></tr>
+                                            <tr><td><code>appendonly</code></td><td>是否开启AOF持久化，yes/no</td></tr>
+                                            <tr><td><code>appendfilename</code></td><td>AOF文件名</td></tr>
+                                            <tr><td><code>appendfsync</code></td><td>同步策略：always(每次写入), everysec(每秒), no(由OS决定)</td></tr>
+                                            <tr><td><code>save</code></td><td>RDB保存策略，格式：save &lt;秒数&gt; &lt;修改键数&gt;</td></tr>
+                                            <tr><td><code>dbfilename</code></td><td>RDB文件名，默认dump.rdb</td></tr>
+                                            <tr><td><code>cluster-enabled</code></td><td>是否开启集群模式，yes/no</td></tr>
+                                            <tr><td><code>cluster-config-file</code></td><td>集群配置文件路径</td></tr>
+                                            <tr><td><code>cluster-node-timeout</code></td><td>节点超时时间（毫秒）</td></tr>
+                                            <tr><td><code>requirepass</code></td><td>客户端连接密码</td></tr>
+                                            <tr><td><code>masterauth</code></td><td>从节点连接主节点的密码</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Redis 6 特殊配置 -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#redis6Config">
+                                    <i class="bi bi-gear-fill me-2"></i> Redis 6.x 特殊配置
+                                    <span class="badge bg-success ms-2">Redis 6+</span>
+                                </button>
+                            </h2>
+                            <div id="redis6Config" class="accordion-collapse collapse" data-bs-parent="#configAccordion">
+                                <div class="accordion-body">
+                                    <div class="alert alert-success">
+                                        <i class="bi bi-stars me-2"></i>以下配置项仅在 <strong>Redis 6.x</strong> 及以上版本可用
+                                    </div>
+                                    <table class="table table-sm">
+                                        <thead><tr><th style="width: 30%;">配置项</th><th>说明</th></tr></thead>
+                                        <tbody>
+                                            <tr><td><code>protected-mode</code></td><td>保护模式（Redis 6中默认更严格），建议生产环境开启</td></tr>
+                                            <tr><td><code>io-threads</code></td><td>IO线程数，用于多线程IO处理（默认关闭，需显式配置）</td></tr>
+                                            <tr><td><code>io-threads-do-reads</code></td><td>是否开启IO多线程读，yes/no</td></tr>
+                                            <tr><td><code>cluster-require-full-coverage</code></td><td>是否需要完整槽位覆盖，建议no</td></tr>
+                                            <tr><td><code>cluster-allow-reads-when-down</code></td><td>集群宕机时是否允许读操作（Redis 6新增）</td></tr>
+                                            <tr><td><code>aclfile</code></td><td>ACL配置文件路径，用于精细权限控制（Redis 6新增）</td></tr>
+                                            <tr><td><code>tls-port</code></td><td>TLS加密连接端口（Redis 6新增）</td></tr>
+                                            <tr><td><code>tls-cert-file</code></td><td>TLS证书文件路径</td></tr>
+                                            <tr><td><code>tls-key-file</code></td><td>TLS私钥文件路径</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 占位符说明 -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#placeholderConfig">
+                                    <i class="bi bi-code-square me-2"></i> 模板占位符说明
+                                </button>
+                            </h2>
+                            <div id="placeholderConfig" class="accordion-collapse collapse" data-bs-parent="#configAccordion">
+                                <div class="accordion-body">
+                                    <table class="table table-sm">
+                                        <thead><tr><th style="width: 30%;">占位符</th><th>说明</th></tr></thead>
+                                        <tbody>
+                                            <tr><td><code>${PORT}</code></td><td>Redis实例端口号</td></tr>
+                                            <tr><td><code>${NODE_IP}</code></td><td>服务器IP地址</td></tr>
+                                            <tr><td><code>${MAX_MEMORY}</code></td><td>最大内存限制(MB)，创建集群时设置</td></tr>
+                                            <tr><td><code>${MAXMEMORY_POLICY}</code></td><td>缓存淘汰策略，创建集群时选择</td></tr>
+                                            <tr><td><code>${REQUIREPASS}</code></td><td>客户端连接密码</td></tr>
+                                            <tr><td><code>${MASTERAUTH}</code></td><td>从节点连接主节点的密码</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-config');
+
+        let templateModal = null;
+        let viewModal = null;
+        let helpModal = null;
+
+        // 加载模板
+        async function loadTemplates() {
+            try {
+                const response = await axios.get('/api/config/templates');
+                if (response.data.code === 200) {
+                    renderTemplates(response.data.data);
+                }
+            } catch (error) {
+                showToast('加载数据失败', 'error');
+            }
+        }
+
+        // 渲染模板
+        function renderTemplates(templates) {
+            const container = document.getElementById('templatesContainer');
+            
+            if (templates.length === 0) {
+                container.innerHTML = `
+                    <div class="col-12">
+                        <div class="empty-state">
+                            <div class="empty-state-icon" style="background: linear-gradient(135deg, #dbeafe, #eff6ff);">
+                                <i class="bi bi-file-code" style="color: #3b82f6;"></i>
+                            </div>
+                            <h4>暂无配置模板</h4>
+                            <p class="text-muted mb-4">创建配置模板用于生成Redis配置文件</p>
+                            <button class="btn btn-primary" onclick="showCreateModal()">
+                                <i class="bi bi-plus-lg"></i> 创建模板
+                            </button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = templates.map((template, index) => {
+                const version = template.redisVersion || '6.x';
+                const versionShort = version.startsWith('6') ? 'v6' : 'v5';
+                const versionBadgeColor = version.startsWith('6') ? 'bg-success' : 'bg-info';
+                return `
+                <div class="col-md-6 col-lg-4 animate-fade-in" style="animation-delay: ${index * 0.1}s;">
+                    <div class="card h-100">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-file-code text-muted"></i>
+                                <span class="fw-semibold">${template.name}</span>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <span class="badge ${versionBadgeColor}">${versionShort}</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">${template.description || '无描述'}</p>
+                            
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge bg-light text-dark">
+                                    <i class="bi bi-hdd me-1"></i>AOF ${template.defaultAppendOnly ? '开' : '关'}
+                                </span>
+                                <span class="badge bg-light text-dark" title="AOF同步策略">
+                                    <i class="bi bi-arrow-repeat me-1"></i>${template.defaultAppendFsync || 'everysec'}
+                                </span>
+                                ${versionShort === 'v6' && template.ioThreadsEnabled ? `
+                                <span class="badge bg-info text-dark" title="多线程 I/O">
+                                    <i class="bi bi-cpu me-1"></i>IO线程: ${template.ioThreadsCount}
+                                </span>
+                                ` : ''}
+                                <span class="badge bg-light text-dark" title="集群配置目录">
+                                    <i class="bi bi-folder me-1"></i>${template.clusterConfigDir || '/opt/redis-cluster'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-transparent d-flex gap-2">
+                            <button class="btn btn-sm btn-light" onclick="viewTemplate(${template.id})">
+                                <i class="bi bi-eye"></i> 查看
+                            </button>
+                            <button class="btn btn-sm btn-primary" onclick="editTemplate(${template.id})">
+                                <i class="bi bi-pencil"></i> 编辑
+                            </button>
+                            ${!template.isDefault ? `
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate(${template.id})">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // 显示配置帮助
+        function showConfigHelp() {
+            helpModal = new bootstrap.Modal(document.getElementById('configHelpModal'));
+            helpModal.show();
+        }
+
+        // 查看模板
+        async function viewTemplate(id) {
+            try {
+                const response = await axios.get(`/api/config/templates/${id}`);
+                if (response.data.code === 200) {
+                    const template = response.data.data;
+                    
+                    document.getElementById('viewTemplateName').textContent = template.name;
+                    document.getElementById('viewTemplateDesc').textContent = template.description || '无描述';
+                    document.getElementById('viewVersion').textContent = `Redis: ${template.redisVersion || '6.x'}`;
+                    document.getElementById('viewMemory').textContent = `AOF: ${template.defaultAppendOnly ? '开启' : '关闭'}`;
+                    document.getElementById('viewAof').textContent = `同步: ${template.defaultAppendFsync || 'everysec'}`;
+                    
+                    // 清除之前的多线程配置徽章
+                    const existingIoBadge = document.querySelector('.badge.bg-info.text-dark');
+                    if (existingIoBadge) {
+                        existingIoBadge.remove();
+                    }
+                    
+                    // 显示多线程配置信息（仅 Redis 6.x）
+                    if ((template.redisVersion || '6.x').startsWith('6') && template.ioThreadsEnabled) {
+                        const ioBadge = document.createElement('span');
+                        ioBadge.className = 'badge bg-info text-dark';
+                        ioBadge.innerHTML = `<i class="bi bi-cpu me-1"></i>IO线程: ${template.ioThreadsCount}${template.ioThreadsDoReads ? ' (含读取)' : ''}`;
+                        document.getElementById('viewAof').parentNode.insertBefore(ioBadge, document.getElementById('viewAof').nextSibling);
+                    }
+                    
+                    document.getElementById('viewTemplateContent').textContent = template.templateContent;
+                    
+                    // 设置编辑按钮事件
+                    document.getElementById('viewEditBtn').onclick = () => {
+                        viewModal.hide();
+                        editTemplate(id);
+                    };
+                    
+                    viewModal = new bootstrap.Modal(document.getElementById('viewTemplateModal'));
+                    viewModal.show();
+                }
+            } catch (error) {
+                showToast('加载模板失败', 'error');
+            }
+        }
+
+        // 危险命令警告弹窗
+        function showDangerCommandWarning(command, checkbox) {
+            // 临时存储当前操作的checkbox，用于取消时恢复
+            window._dangerCommandCheckbox = checkbox;
+            
+            confirmAction(
+                `确定要放开 <code>${command}</code> 命令吗？<br><br><div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> 警告：这类命令会遍历或操作整个 Keyspace，在数据量较大时会造成严重阻塞</div>`,
+                () => {
+                    // 用户确认，保持取消勾选状态（不做任何事，因为已经取消勾选了）
+                    updateTemplateContentPreview();
+                    window._dangerCommandCheckbox = null;
+                },
+                '<i class="bi bi-exclamation-triangle text-warning"></i> 危险操作确认',
+                '确认放开',
+                'btn-warning'
+            );
+        }
+        
+        // 监听确认对话框关闭事件，恢复checkbox状态
+        document.getElementById('confirmModal').addEventListener('hidden.bs.modal', function() {
+            if (window._dangerCommandCheckbox) {
+                // 用户取消了操作，恢复勾选状态
+                window._dangerCommandCheckbox.checked = true;
+                window._dangerCommandCheckbox = null;
+            }
+        });
+
+        // 更新模板内容预览（仅在新建模板时自动更新）
+        function updateTemplateContentPreview() {
+            const templateId = document.getElementById('templateId').value;
+            // 只有新建模板时才自动更新内容
+            if (!templateId) {
+                document.getElementById('templateContent').value = generateTemplateContent();
+            }
+        }
+
+        // 绑定危险命令复选框事件
+        document.querySelectorAll('.danger-command-check').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                if (!this.checked) {
+                    const command = this.getAttribute('data-command');
+                    showDangerCommandWarning(command, this);
+                } else {
+                    updateTemplateContentPreview();
+                }
+            });
+        });
+
+        // 绑定EVAL/EVALSHA复选框和输入框事件
+        document.getElementById('renameEval').addEventListener('change', function() {
+            const input = document.getElementById('renameEvalName');
+            input.disabled = !this.checked;
+            if (this.checked) {
+                input.focus();
+            } else {
+                input.value = '';
+            }
+            updateTemplateContentPreview();
+        });
+
+        document.getElementById('renameEvalsha').addEventListener('change', function() {
+            const input = document.getElementById('renameEvalshaName');
+            input.disabled = !this.checked;
+            if (this.checked) {
+                input.focus();
+            } else {
+                input.value = '';
+            }
+            updateTemplateContentPreview();
+        });
+
+        // EVAL/EVALSHA输入框失去焦点时更新模板
+        document.getElementById('renameEvalName').addEventListener('blur', updateTemplateContentPreview);
+        document.getElementById('renameEvalshaName').addEventListener('blur', updateTemplateContentPreview);
+
+        // 手动刷新模板内容（编辑模式下可用）
+        function refreshTemplateContent() {
+            const templateId = document.getElementById('templateId').value;
+            const newContent = generateTemplateContent();
+            document.getElementById('templateContent').value = newContent;
+            showToast('模板内容已刷新', 'success');
+        }
+
+        // 显示创建模态框
+        function showCreateModal() {
+            document.getElementById('modalTitle').innerHTML = '<i class="bi bi-file-code"></i> 新建模板';
+            document.getElementById('templateId').value = '';
+            document.getElementById('templateName').value = '';
+            document.getElementById('redisVersion').value = '6.x';
+            document.getElementById('templateDesc').value = '';
+            document.getElementById('defaultAof').value = 'true';
+            document.getElementById('defaultAofPolicy').value = 'everysec';
+            document.getElementById('clusterConfigDir').value = '/opt/redis-cluster';
+            // 重置危险命令配置（默认全部禁用）
+            document.getElementById('disableKeys').checked = true;
+            document.getElementById('disableFlushdb').checked = true;
+            document.getElementById('disableFlushall').checked = true;
+            // 重置EVAL/EVALSHA配置
+            document.getElementById('renameEval').checked = false;
+            document.getElementById('renameEvalName').value = '';
+            document.getElementById('renameEvalName').disabled = true;
+            document.getElementById('renameEvalsha').checked = false;
+            document.getElementById('renameEvalshaName').value = '';
+            document.getElementById('renameEvalshaName').disabled = true;
+            // 重置多线程配置
+            document.getElementById('ioThreadsCount').value = '1';
+            document.getElementById('ioThreadsDoReads').checked = false;
+            document.getElementById('ioThreadsConfig').style.display = 'block'; // Redis 6.x 默认显示
+            
+            // 根据当前配置生成模板内容（包含默认的危险命令禁用配置）
+            document.getElementById('templateContent').value = generateTemplateContent();
+            
+            templateModal = new bootstrap.Modal(document.getElementById('templateModal'));
+            templateModal.show();
+        }
+
+        // 编辑模板
+        async function editTemplate(id) {
+            try {
+                const response = await axios.get(`/api/config/templates/${id}`);
+                if (response.data.code === 200) {
+                    const template = response.data.data;
+                    
+                    document.getElementById('modalTitle').innerHTML = '<i class="bi bi-file-code"></i> 编辑模板';
+                    document.getElementById('templateId').value = template.id;
+                    document.getElementById('templateName').value = template.name;
+                    document.getElementById('redisVersion').value = template.redisVersion || '6.x';
+                    document.getElementById('templateDesc').value = template.description || '';
+                    document.getElementById('defaultAof').value = template.defaultAppendOnly ? 'true' : 'false';
+                    document.getElementById('defaultAofPolicy').value = template.defaultAppendFsync || 'everysec';
+                    document.getElementById('clusterConfigDir').value = template.clusterConfigDir || '/opt/redis-cluster';
+                    
+                    // 加载危险命令配置
+                    document.getElementById('disableKeys').checked = template.disableKeys !== false;
+                    document.getElementById('disableFlushdb').checked = template.disableFlushdb !== false;
+                    document.getElementById('disableFlushall').checked = template.disableFlushall !== false;
+                    
+                    // 加载EVAL/EVALSHA配置
+                    document.getElementById('renameEval').checked = !!template.renameEval;
+                    document.getElementById('renameEvalName').value = template.renameEvalName || '';
+                    document.getElementById('renameEvalName').disabled = !template.renameEval;
+                    document.getElementById('renameEvalsha').checked = !!template.renameEvalsha;
+                    document.getElementById('renameEvalshaName').value = template.renameEvalshaName || '';
+                    document.getElementById('renameEvalshaName').disabled = !template.renameEvalsha;
+                    
+                    // 加载多线程配置
+                    const isRedis6 = (template.redisVersion || '6.x').startsWith('6');
+                    document.getElementById('ioThreadsConfig').style.display = isRedis6 ? 'block' : 'none';
+                    document.getElementById('ioThreadsCount').value = template.ioThreadsCount || '1';
+                    document.getElementById('ioThreadsDoReads').checked = !!template.ioThreadsDoReads;
+                    
+                    document.getElementById('templateContent').value = template.templateContent || generateTemplateContent();
+                    
+                    templateModal = new bootstrap.Modal(document.getElementById('templateModal'));
+                    templateModal.show();
+                }
+            } catch (error) {
+                showToast('加载模板失败', 'error');
+            }
+        }
+
+        // 生成模板内容（基于基础模板，动态添加危险命令配置和多线程配置）
+        function generateTemplateContent() {
+            const disableKeys = document.getElementById('disableKeys').checked;
+            const disableFlushdb = document.getElementById('disableFlushdb').checked;
+            const disableFlushall = document.getElementById('disableFlushall').checked;
+            const renameEval = document.getElementById('renameEval').checked;
+            const renameEvalName = document.getElementById('renameEvalName').value.trim();
+            const renameEvalsha = document.getElementById('renameEvalsha').checked;
+            const renameEvalshaName = document.getElementById('renameEvalshaName').value.trim();
+            
+            // 获取 Redis 版本和多线程配置
+            const redisVersion = document.getElementById('redisVersion').value;
+            const ioThreadsCount = document.getElementById('ioThreadsCount').value || '1';
+            const ioThreadsDoReads = document.getElementById('ioThreadsDoReads').checked;
+            
+            // 获取基础配置值
+            const dataDir = document.getElementById('clusterConfigDir').value || '/opt/redis-cluster';
+            const appendOnly = document.getElementById('defaultAof').value === 'true' ? 'yes' : 'no';
+            const appendFsync = document.getElementById('defaultAofPolicy').value;
+
+            // 获取基础模板（不包含危险命令配置）
+            let content = getBaseTemplate(dataDir, appendOnly, appendFsync);
+            
+            // 添加多线程配置（仅 Redis 6.x）
+            if (redisVersion.startsWith('6') && parseInt(ioThreadsCount) > 1) {
+                let ioConfig = '\n\n# 多线程 I/O 配置（Redis 6.0+ 特性）\n';
+                ioConfig += `# 注意：设置后不能通过 CONFIG SET 动态修改，需要重启生效\n`;
+                ioConfig += `io-threads ${ioThreadsCount}\n`;
+                if (ioThreadsDoReads) {
+                    ioConfig += `io-threads-do-reads yes\n`;
+                }
+                
+                // 在网络配置后添加多线程配置
+                const networkMarker = 'tcp-keepalive 300';
+                if (content.includes(networkMarker)) {
+                    content = content.replace(
+                        networkMarker,
+                        networkMarker + ioConfig
+                    );
+                }
+            }
+            
+            // 添加危险命令禁用配置
+            let dangerCommands = '';
+            if (disableKeys) {
+                dangerCommands += 'rename-command KEYS ""\n';
+            }
+            if (disableFlushdb) {
+                dangerCommands += 'rename-command FLUSHDB ""\n';
+            }
+            if (disableFlushall) {
+                dangerCommands += 'rename-command FLUSHALL ""\n';
+            }
+            
+            // 添加EVAL/EVALSHA重命名/禁用配置
+            // 如果勾选了但未输入新名称，则生成 rename-command EVAL "" 表示禁用该命令
+            if (renameEval) {
+                if (renameEvalName) {
+                    dangerCommands += `rename-command EVAL "${renameEvalName}"\n`;
+                } else {
+                    dangerCommands += 'rename-command EVAL ""\n';
+                }
+            }
+            if (renameEvalsha) {
+                if (renameEvalshaName) {
+                    dangerCommands += `rename-command EVALSHA "${renameEvalshaName}"\n`;
+                } else {
+                    dangerCommands += 'rename-command EVALSHA ""\n';
+                }
+            }
+            
+            if (dangerCommands) {
+                // 在安全配置部分后添加危险命令配置
+                const securityEndMarker = 'masterauth ${MASTERAUTH}';
+                if (content.includes(securityEndMarker)) {
+                    content = content.replace(
+                        securityEndMarker,
+                        securityEndMarker + '\n\n# 危险命令禁用（防止误操作导致集群性能问题）\n' + dangerCommands.trim()
+                    );
+                }
+            }
+            
+            return content;
+        }
+        
+        /**
+         * 基础模板（不包含危险命令配置）
+         * 用途：generateTemplateContent() 以此为基础，根据用户勾选动态添加危险命令配置
+         * 注意：新建模板时默认会添加危险命令禁用配置（KEYS/FLUSHDB/FLUSHALL）
+         */
+        function getBaseTemplate(dataDir, appendOnly, appendFsync) {
+            // 注意：这里使用 ${DATA_DIR} 占位符，而不是直接插入 dataDir 值
+            // 这样在创建集群时可以动态替换为用户指定的路径
+            return `# Redis 集群配置
+# 由 Redis Manager 自动生成
+
+# 基础配置
+port \${PORT}
+bind \${NODE_IP}
+protected-mode no
+daemonize yes
+supervised no
+dir \${DATA_DIR}/data
+pidfile \${DATA_DIR}/redis_\${PORT}.pid
+logfile \${DATA_DIR}/logs/redis_\${PORT}.log
+
+# 内存配置（创建集群时设置）
+maxmemory \${MAX_MEMORY}mb
+maxmemory-policy \${MAXMEMORY_POLICY}
+
+# 持久化配置
+appendonly ${appendOnly}
+appendfilename "appendonly.aof"
+appendfsync ${appendFsync}
+no-appendfsync-on-rewrite yes
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+
+# RDB配置
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump_\${PORT}.rdb
+
+# 集群配置
+cluster-enabled yes
+cluster-config-file \${DATA_DIR}/nodes/nodes_\${PORT}.conf
+cluster-node-timeout 5000
+cluster-require-full-coverage no
+
+# 网络配置
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+
+# 安全配置
+requirepass \${REQUIREPASS}
+masterauth \${MASTERAUTH}
+
+# ============================================
+# 性能优化配置
+# ============================================
+
+# 【Hash 压缩列表配置】
+# 当 Hash 中字段数 ≤ 512 且单个字段值大小 ≤ 64 字节时，使用 ziplist 编码
+# 优点：内存占用更少；缺点：操作速度略慢于 hashtable
+hash-max-ziplist-entries 512
+hash-max-ziplist-value 64
+
+# 【List 压缩列表配置】
+# 控制 List 类型的编码方式，使用 ziplist 可节省内存
+# -5: 最大压缩，最大节点 64kb；-2: 8kb（建议生产环境使用 -1 或 -2）
+list-max-ziplist-size -2
+
+# 【Set 整数集合配置】
+# 当 Set 元素数 ≤ 512 且全为整数时，使用 intset 编码（极省内存）
+set-max-intset-entries 512
+
+# 【Sorted Set 压缩列表配置】
+# ZSet 元素数 ≤ 128 且单个元素大小 ≤ 64 字节时，使用 ziplist
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+
+# 【HyperLogLog 稀疏编码配置】
+# HyperLogLog 用于基数统计（如 UV 计算），超过 3000 字节则转为密集编码
+hll-sparse-max-bytes 3000
+
+# 【主动重哈希配置】
+# Redis 使用渐进式 rehash 迁移数据，在后台线程中主动完成哈希表 rehash
+# 建议：生产环境保持 yes，避免 rehash 过程拖慢请求响应
+activerehashing yes
+
+# 【客户端输出缓冲区限制 - 普通客户端】
+# 防止客户端消费慢导致服务端内存无限增长
+# 格式：hard-limit soft-limit soft-seconds
+# 0 0 0 表示不限制（普通客户端通常不设限）
+client-output-buffer-limit normal 0 0 0
+
+# 【客户端输出缓冲区限制 - 从节点复制】
+# 保护主节点不因从节点同步慢而内存溢出
+# hard:256mb - 硬性上限，超过立即断开
+# soft:64mb/60s - 软限制，60秒内超过 64mb 则断开
+client-output-buffer-limit replica 256mb 64mb 60
+
+# 【客户端输出缓冲区限制 - 发布订阅】
+# Pub/Sub 模式下的缓冲区限制
+# 如果订阅者消费慢，发布者发布快，需要此限制防止内存溢出
+client-output-buffer-limit pubsub 32mb 8mb 60
+
+# 【定时任务频率配置】
+# Redis 每秒执行多次定时任务（清理过期键、rehash、关闭超时连接等）
+# hz 越大，过期键清理越及时，但 CPU 消耗也增加（默认每秒执行 10 次后台任务）
+hz 10
+
+# 【动态 hz 配置】
+# 根据客户端连接数自动调整 hz 值，连接越多 hz 越高
+# 建议生产环境开启，在大量连接时保证过期键及时清理
+dynamic-hz yes
+
+# 【AOF 重写增量同步配置】
+# AOF 重写时开启增量 fsync（每 32MB 刷盘一次），减少 IO 压力
+aof-rewrite-incremental-fsync yes
+
+# 【RDB 保存增量同步配置】
+# RDB 保存时开启增量 fsync，避免生成 RDB 文件时大量磁盘 IO 阻塞 Redis
+rdb-save-incremental-fsync yes`;
+        }
+
+        /**
+         * 获取完整默认模板内容（包含危险命令禁用配置）
+         * 用途：新建模板时的默认显示内容
+         * 注意：此内容应该与后端 RedisConfigService.getDefaultTemplateContent() 保持一致
+         */
+        function getDefaultTemplate() {
+            // 直接调用 generateTemplateContent() 获取默认配置（默认勾选所有危险命令禁用）
+            // 确保新建模板时显示的内容与后端创建的默认模板一致
+            return generateTemplateContent();
+        }
+
+        // 保存模板
+        async function saveTemplate() {
+            const id = document.getElementById('templateId').value;
+            
+            // 注意：EVAL/EVALSHA 配置允许留空，留空表示禁用该命令（生成 rename-command XXX ""）
+            
+            const redisVersion = document.getElementById('redisVersion').value;
+            const isRedis6 = redisVersion.startsWith('6');
+            
+            // 编辑模式下，询问是否根据当前配置更新模板内容
+            if (id) {
+                // 使用自定义确认对话框，提供"更新内容并保存"和"取消"两个选项
+                showTemplateSaveConfirm(id, redisVersion, isRedis6);
+                return;
+            }
+            
+            // 新建模式直接保存
+            await doSaveTemplate(id, redisVersion, isRedis6);
+        }
+        
+        // 显示模板保存确认对话框（编辑模式专用）
+        function showTemplateSaveConfirm(id, redisVersion, isRedis6) {
+            const modalHtml = `
+                <div class="modal fade" id="templateSaveConfirmModal" tabindex="-1" data-bs-backdrop="static">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title"><i class="bi bi-question-circle text-primary"></i> 保存模板确认</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>是否根据当前配置选项重新生成模板内容？</p>
+                                <div class="alert alert-info">
+                                    <div class="mt-2">
+                                        <b>更新内容并保存：</b>根据AOF设置、数据目录、危险命令等配置重新生成模板内容，然后保存<br>
+                                        <b>取消：</b>不保存任何更改，直接退出编辑
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                                <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="handleTemplateSaveConfirm('${id}', '${redisVersion}', ${isRedis6})">更新内容并保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 移除已存在的模态框
+            const existingModal = document.getElementById('templateSaveConfirmModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // 添加到页面并显示
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            const modal = new bootstrap.Modal(document.getElementById('templateSaveConfirmModal'));
+            modal.show();
+            
+            // 监听模态框关闭后清理DOM
+            document.getElementById('templateSaveConfirmModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+        }
+        
+        // 处理模板保存确认结果
+        async function handleTemplateSaveConfirm(id, redisVersion, isRedis6) {
+            // 用户选择"更新内容并保存"
+            refreshTemplateContent();
+            // 延迟执行保存，确保内容已刷新
+            setTimeout(() => doSaveTemplate(id, redisVersion, isRedis6), 100);
+        }
+        
+        // 执行实际的模板保存操作
+        async function doSaveTemplate(id, redisVersion, isRedis6) {
+            const data = {
+                name: document.getElementById('templateName').value,
+                description: document.getElementById('templateDesc').value,
+                redisVersion: redisVersion,
+                defaultMaxMemory: 4096,
+                defaultAppendOnly: document.getElementById('defaultAof').value === 'true',
+                defaultAppendFsync: document.getElementById('defaultAofPolicy').value,
+                defaultMaxMemoryPolicy: 'allkeys-lru',
+                clusterConfigDir: document.getElementById('clusterConfigDir').value,
+                // 危险命令配置
+                disableKeys: document.getElementById('disableKeys').checked,
+                disableFlushdb: document.getElementById('disableFlushdb').checked,
+                disableFlushall: document.getElementById('disableFlushall').checked,
+                // EVAL/EVALSHA配置
+                renameEval: document.getElementById('renameEval').checked,
+                renameEvalName: document.getElementById('renameEvalName').value.trim(),
+                renameEvalsha: document.getElementById('renameEvalsha').checked,
+                renameEvalshaName: document.getElementById('renameEvalshaName').value.trim(),
+                // 多线程配置（仅 Redis 6.x）
+                ioThreadsEnabled: isRedis6 && parseInt(document.getElementById('ioThreadsCount').value) > 1,
+                ioThreadsCount: isRedis6 ? parseInt(document.getElementById('ioThreadsCount').value) : 1,
+                ioThreadsDoReads: isRedis6 && document.getElementById('ioThreadsDoReads').checked,
+                templateContent: document.getElementById('templateContent').value
+            };
+
+            if (!data.name || !data.templateContent) {
+                showToast('请填写完整信息', 'warning');
+                return;
+            }
+
+            try {
+                let response;
+                if (id) {
+                    response = await axios.put(`/api/config/templates/${id}`, data);
+                } else {
+                    response = await axios.post('/api/config/templates', data);
+                }
+
+                if (response.data.code === 200) {
+                    showToast('保存成功', 'success');
+                    templateModal.hide();
+                    loadTemplates();
+                } else {
+                    showToast(response.data.message, 'error');
+                }
+            } catch (error) {
+                showToast(error.response?.data?.message || '保存失败', 'error');
+            }
+        }
+
+        // 删除模板
+        async function deleteTemplate(id) {
+            confirmAction('确定要删除这个模板吗？', async () => {
+                try {
+                    const response = await axios.delete(`/api/config/templates/${id}`);
+                    if (response.data.code === 200) {
+                        showToast('删除成功', 'success');
+                        loadTemplates();
+                    } else {
+                        showToast(response.data.message, 'error');
+                    }
+                } catch (error) {
+                    showToast('删除失败', 'error');
+                }
+            });
+        }
+
+        // Redis版本选择变化时更新多线程配置显示
+        document.getElementById('redisVersion').addEventListener('change', function() {
+            const version = this.value;
+            
+            // 显示/隐藏多线程配置（仅 Redis 6.x 显示）
+            const ioThreadsConfig = document.getElementById('ioThreadsConfig');
+            if (version.startsWith('6')) {
+                ioThreadsConfig.style.display = 'block';
+            } else {
+                ioThreadsConfig.style.display = 'none';
+                // 重置多线程配置
+                document.getElementById('ioThreadsCount').value = '1';
+                document.getElementById('ioThreadsDoReads').checked = false;
+            }
+            
+            // 更新模板内容预览
+            updateTemplateContentPreview();
+        });
+        
+        // 多线程数变化时更新模板
+        document.getElementById('ioThreadsCount').addEventListener('change', updateTemplateContentPreview);
+        document.getElementById('ioThreadsCount').addEventListener('blur', updateTemplateContentPreview);
+        
+        // 多线程读取勾选框事件
+        const ioThreadsDoReadsCheckbox = document.getElementById('ioThreadsDoReads');
+        ioThreadsDoReadsCheckbox.addEventListener('click', function(e) {
+            // 如果是勾选操作，阻止默认行为，先显示确认弹框
+            if (this.checked) {
+                e.preventDefault();
+                this.checked = false; // 先重置为未勾选
+                
+                // 显示确认弹框
+                confirmAction(
+                    '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> <b>生产环境警告</b></div>除非有明确的性能瓶颈证据，且经过充分压测验证，否则不建议在生产环境启用多线程读取。<br><br>确定要启用吗？',
+                    () => {
+                        // 用户确认后才勾选
+                        ioThreadsDoReadsCheckbox.checked = true;
+                        updateTemplateContentPreview();
+                    },
+                    '<i class="bi bi-lightning-charge text-warning"></i> 启用多线程读取确认',
+                    '确认开启',
+                    'btn-warning'
+                );
+            } else {
+                // 取消勾选直接生效
+                updateTemplateContentPreview();
+            }
+        });
+
+        // 初始化
+        loadTemplates();
+    </script>
+</body>
+</html>

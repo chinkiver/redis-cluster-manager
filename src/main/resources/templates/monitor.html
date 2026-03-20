@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('监控')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('实时监控')"></header>
+        
+        <div class="content-container">
+            <!-- Global Stats -->
+            <div class="row g-4 mb-4" id="globalOverview">
+                <!-- 动态加载 -->
+            </div>
+
+            <!-- Charts -->
+            <div class="row g-4 mb-4">
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6><i class="bi bi-memory"></i> 内存使用分布</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="memoryDistChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6><i class="bi bi-lightning"></i> QPS趋势</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="qpsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cluster Detail Table -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6><i class="bi bi-table"></i> 集群详情</h6>
+                    <span class="badge bg-info">实时更新</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>集群名称</th>
+                                    <th>节点</th>
+                                    <th>运行中</th>
+                                    <th>内存使用</th>
+                                    <th>连接数</th>
+                                    <th>QPS</th>
+                                    <th>健康度</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="monitorTable">
+                                <tr>
+                                    <td colspan="8" class="text-center py-5">
+                                        <div class="spinner-border text-primary"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-monitor');
+
+        let memoryDistChart = null;
+        let qpsChart = null;
+
+        // 加载监控数据
+        async function loadMonitorData() {
+            try {
+                const response = await axios.get('/api/monitor/clusters');
+                if (response.data.code === 200) {
+                    renderMonitorData(response.data.data);
+                }
+            } catch (error) {
+                showToast('加载监控数据失败', 'error');
+            }
+        }
+
+        // 渲染监控数据
+        function renderMonitorData(clusters) {
+            let totalNodes = 0;
+            let runningNodes = 0;
+            let totalMemory = 0;
+            let totalClients = 0;
+            let totalOps = 0;
+
+            const tbody = document.getElementById('monitorTable');
+            const deployedClusters = clusters.filter(c => c.status === 2);
+
+            tbody.innerHTML = deployedClusters.map((cluster, index) => {
+                totalNodes += cluster.totalNodes || 0;
+                runningNodes += cluster.runningNodes || 0;
+                totalMemory += cluster.usedMemory || 0;
+                totalClients += cluster.connectedClients || 0;
+                totalOps += cluster.opsPerSec || 0;
+
+                const healthRate = cluster.totalNodes > 0 ? 
+                    Math.round(cluster.runningNodes / cluster.totalNodes * 100) : 0;
+
+                return `
+                    <tr class="animate-fade-in" style="animation-delay: ${index * 0.05}s;">
+                        <td>
+                            <strong>${cluster.groupName}</strong>
+                        </td>
+                        <td>${formatNumber(cluster.totalNodes)}</td>
+                        <td>
+                            <span class="status-dot ${cluster.runningNodes === cluster.totalNodes ? 'online' : 'warning'}"></span>
+                            ${formatNumber(cluster.runningNodes)}
+                        </td>
+                        <td>${formatBytes(cluster.usedMemory * 1024 * 1024)}</td>
+                        <td>${formatNumber(cluster.connectedClients)}</td>
+                        <td>${formatNumber(cluster.opsPerSec)}</td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="progress" style="width: 80px;">
+                                    <div class="progress-bar ${healthRate === 100 ? '' : 'bg-warning'}" style="width: ${healthRate}%"></div>
+                                </div>
+                                <span class="small">${healthRate}%</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-${cluster.runningNodes === cluster.totalNodes ? 'success' : 'warning'}">
+                                ${cluster.runningNodes === cluster.totalNodes ? '正常' : '警告'}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('') || `
+                <tr>
+                    <td colspan="8" class="text-center py-5">
+                        <div class="empty-state" style="padding: 20px;">
+                            <i class="bi bi-inbox display-4 text-muted"></i>
+                            <p class="mt-2 text-muted">暂无已部署的集群</p>
+                        </div>
+                    </td>
+                </tr>
+            `;
+
+            // 渲染全局概览
+            renderGlobalOverview({
+                clusters: deployedClusters.length,
+                totalNodes,
+                runningNodes,
+                stoppedNodes: totalNodes - runningNodes,
+                totalMemory,
+                totalClients,
+                totalOps
+            });
+
+            // 更新图表
+            updateCharts(clusters);
+        }
+
+        // 渲染全局概览
+        function renderGlobalOverview(data) {
+            const container = document.getElementById('globalOverview');
+            const healthRate = data.totalNodes > 0 ? 
+                Math.round(data.runningNodes / data.totalNodes * 100) : 0;
+            
+            container.innerHTML = `
+                <div class="col-md-4 col-lg-2">
+                    <div class="stat-card primary">
+                        <div class="stat-label">集群数</div>
+                        <div class="stat-value">${data.clusters}</div>
+                    </div>
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <div class="stat-card info">
+                        <div class="stat-label">总节点</div>
+                        <div class="stat-value">${formatNumber(data.totalNodes)}</div>
+                    </div>
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <div class="stat-card success">
+                        <div class="stat-label">运行中</div>
+                        <div class="stat-value" style="color: var(--success);">${formatNumber(data.runningNodes)}</div>
+                    </div>
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <div class="stat-card danger">
+                        <div class="stat-label">已停止</div>
+                        <div class="stat-value" style="color: var(--danger);">${formatNumber(data.stoppedNodes)}</div>
+                    </div>
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <div class="stat-card warning">
+                        <div class="stat-label">总内存</div>
+                        <div class="stat-value">${formatBytes(data.totalMemory * 1024 * 1024)}</div>
+                    </div>
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <div class="stat-card" style="--stat-color: #6366f1;">
+                        <div class="stat-label">总连接</div>
+                        <div class="stat-value" style="color: #6366f1;">${formatNumber(data.totalClients)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 更新图表
+        function updateCharts(clusters) {
+            // 内存分布饼图
+            const memoryData = clusters.map(c => c.usedMemory || 0);
+            const memoryLabels = clusters.map(c => c.groupName);
+            
+            if (memoryDistChart) memoryDistChart.destroy();
+            memoryDistChart = new Chart(document.getElementById('memoryDistChart'), {
+                type: 'bar',
+                data: {
+                    labels: memoryLabels,
+                    datasets: [{
+                        label: '内存使用 (MB)',
+                        data: memoryData,
+                        backgroundColor: '#dc382c',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+
+            // QPS趋势图（模拟数据）
+            if (qpsChart) qpsChart.destroy();
+            qpsChart = new Chart(document.getElementById('qpsChart'), {
+                type: 'line',
+                data: {
+                    labels: ['1m', '2m', '3m', '4m', '5m', '6m'],
+                    datasets: clusters.slice(0, 3).map((c, i) => ({
+                        label: c.groupName,
+                        data: Array(6).fill(0).map(() => Math.floor(Math.random() * 1000) + 500),
+                        borderColor: ['#dc382c', '#3b82f6', '#10b981'][i],
+                        backgroundColor: 'transparent',
+                        tension: 0.4
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 初始化
+        loadMonitorData();
+        setInterval(loadMonitorData, 30000);
+    </script>
+</body>
+</html>

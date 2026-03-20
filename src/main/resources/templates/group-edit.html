@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('编辑服务器组')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('编辑服务器组')"></header>
+        
+        <div class="content-container">
+            <form id="groupForm" class="animate-fade-in">
+                <!-- Basic Info -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6><i class="bi bi-info-circle"></i> 基本信息</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning border-warning">
+                            <div class="d-flex align-items-start">
+                                <i class="bi bi-exclamation-triangle-fill text-warning me-2 mt-1"></i>
+                                <div>
+                                    <strong>前提条件：请确保服务器已安装Redis服务（至少2台）</strong>
+                                    <div class="mt-1">
+                                        <small>
+                                            本系统不负责 <strong class="text-danger">Redis</strong> 的安装，请使用者自行在服务器上安装 <strong class="text-danger">Redis 5.x</strong> 或 <strong class="text-danger">Redis 6.x</strong> 服务。<br>
+                                            安装路径下须包含 <code>redis-server</code>、<code>redis-cli</code> 等执行命令（默认路径：<code>/usr/local/bin</code>）
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">组名称 <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="groupName" placeholder="例如: Redis-Cluster-01" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">描述</label>
+                                    <input type="text" class="form-control" id="groupDescription" placeholder="可选描述">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Servers Configuration -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6><i class="bi bi-hdd-network"></i> 服务器配置（至少2台）</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <small class="text-muted">已配置 <span id="serverCount">0</span> 台服务器</small>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="removeServerBtn" onclick="removeServer()">
+                                    <i class="bi bi-dash-lg"></i> 删除服务器
+                                </button>
+                                <button type="button" class="btn btn-sm btn-primary" onclick="addServer()">
+                                    <i class="bi bi-plus-lg"></i> 添加服务器
+                                </button>
+                            </div>
+                        </div>
+                        <div id="serversContainer">
+                            <!-- 动态生成服务器表单 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="d-flex gap-3">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="bi bi-save"></i> 保存
+                    </button>
+                    <a href="/groups" class="btn btn-light btn-lg">
+                        <i class="bi bi-x-lg"></i> 取消
+                    </a>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <!-- Progress Modal -->
+    <div class="modal fade" id="progressModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-shield-check"></i> 验证服务器</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-3 text-muted" id="progressText">正在连接服务器...</p>
+                    </div>
+                    <div id="progressList" class="list-group list-group-flush border rounded" style="max-height: 300px; overflow-y: auto;">
+                        <!-- 动态生成检测进度 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script th:inline="javascript">
+        const action = [[${action}]];
+        const groupId = [[${groupId}]];
+
+        // 服务器数量计数器
+        let serverCount = 0;
+
+        // 创建单个服务器表单HTML
+        function createServerCard(index) {
+            return `
+                <div class="card mb-2 server-card" data-index="${index}" style="animation: fadeIn 0.3s ease-out ${index * 0.05}s both;">
+                    <div class="card-header bg-light py-2 px-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-hdd text-primary"></i>
+                                <strong class="small server-number">服务器 #${index + 1}</strong>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="deleteServer(${index})" title="删除此服务器">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body py-2 px-3">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                                <label class="form-label small mb-1">IP地址 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm server-ip" data-index="${index}" 
+                                       placeholder="192.168.1.${index+1}" required>
+                            </div>
+                            <div class="col-6 col-sm-3 col-md-2 col-lg-1">
+                                <label class="form-label small mb-1">端口</label>
+                                <input type="number" class="form-control form-control-sm server-ssh-port" data-index="${index}" value="22">
+                            </div>
+                            <div class="col-6 col-sm-3 col-md-2 col-lg-1">
+                                <label class="form-label small mb-1">用户 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm server-ssh-user" data-index="${index}" value="root">
+                            </div>
+                            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                                <label class="form-label small mb-1">密码 <span class="text-danger">*</span></label>
+                                <input type="password" class="form-control form-control-sm server-ssh-pass" data-index="${index}" 
+                                       required autocomplete="off" data-lpignore="true" data-1p-ignore="true">
+                            </div>
+                            <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+                                <label class="form-label small mb-1">Redis路径 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm server-redis-path" data-index="${index}" value="/usr/local/bin" required>
+                            </div>
+                            <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+                                <label class="form-label small mb-1">描述</label>
+                                <input type="text" class="form-control form-control-sm server-desc" data-index="${index}" placeholder="可选">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 初始化服务器表单 - 默认创建2台
+        function initServerForms() {
+            const container = document.getElementById('serversContainer');
+            container.innerHTML = '';
+            serverCount = 0;
+            
+            // 初始创建2台服务器
+            for (let i = 0; i < 2; i++) {
+                addServer();
+            }
+        }
+
+        // 添加服务器
+        function addServer() {
+            const container = document.getElementById('serversContainer');
+            const html = createServerCard(serverCount);
+            container.insertAdjacentHTML('beforeend', html);
+            serverCount++;
+            updateServerCount();
+        }
+
+        // 删除最后一个服务器
+        function removeServer() {
+            if (serverCount <= 2) {
+                showToast('至少需要保留2台服务器', 'warning');
+                return;
+            }
+            const container = document.getElementById('serversContainer');
+            const cards = container.querySelectorAll('.server-card');
+            if (cards.length > 0) {
+                cards[cards.length - 1].remove();
+                serverCount--;
+                updateServerCount();
+                updateServerNumbers();
+            }
+        }
+
+        // 删除指定服务器
+        function deleteServer(index) {
+            if (serverCount <= 2) {
+                showToast('至少需要保留2台服务器', 'warning');
+                return;
+            }
+            const container = document.getElementById('serversContainer');
+            const card = container.querySelector(`.server-card[data-index="${index}"]`);
+            if (card) {
+                card.remove();
+                serverCount--;
+                updateServerCount();
+                updateServerNumbers();
+                updateDataIndices();
+            }
+        }
+
+        // 更新服务器计数显示
+        function updateServerCount() {
+            document.getElementById('serverCount').textContent = serverCount;
+            const removeBtn = document.getElementById('removeServerBtn');
+            if (serverCount <= 2) {
+                removeBtn.disabled = true;
+                removeBtn.classList.add('disabled');
+            } else {
+                removeBtn.disabled = false;
+                removeBtn.classList.remove('disabled');
+            }
+        }
+
+        // 更新服务器序号标签
+        function updateServerNumbers() {
+            const cards = document.querySelectorAll('.server-card');
+            cards.forEach((card, idx) => {
+                const numberEl = card.querySelector('.server-number');
+                if (numberEl) {
+                    numberEl.textContent = `服务器 #${idx + 1}`;
+                }
+            });
+        }
+
+        // 更新所有data-index属性
+        function updateDataIndices() {
+            const cards = document.querySelectorAll('.server-card');
+            cards.forEach((card, newIndex) => {
+                card.setAttribute('data-index', newIndex);
+                card.querySelectorAll('[data-index]').forEach(el => {
+                    el.setAttribute('data-index', newIndex);
+                });
+            });
+        }
+
+        // 加载组数据
+        async function loadGroupData() {
+            // 设置页面标题
+            if (action === 'create') {
+                document.querySelector('.page-title span').textContent = '新建服务器组';
+            } else if (action === 'edit' && groupId) {
+                document.querySelector('.page-title span').textContent = '编辑服务器组';
+                
+                try {
+                    const response = await axios.get(`/api/groups/${groupId}`);
+                    if (response.data.code === 200) {
+                        const group = response.data.data;
+                        document.getElementById('groupName').value = group.name;
+                        document.getElementById('groupDescription').value = group.description || '';
+
+                        if (group.servers && group.servers.length > 0) {
+                            // 清空现有表单
+                            const container = document.getElementById('serversContainer');
+                            container.innerHTML = '';
+                            serverCount = 0;
+                            
+                            // 按nodeIndex排序服务器
+                            const sortedServers = group.servers.sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+                            
+                            // 动态创建服务器表单
+                            sortedServers.forEach((server, idx) => {
+                                const html = createServerCard(idx);
+                                container.insertAdjacentHTML('beforeend', html);
+                                serverCount++;
+                                
+                                // 填充数据
+                                document.querySelector(`.server-ip[data-index="${idx}"]`).value = server.ip || '';
+                                document.querySelector(`.server-ssh-port[data-index="${idx}"]`).value = server.sshPort || 22;
+                                document.querySelector(`.server-ssh-user[data-index="${idx}"]`).value = server.sshUser || '';
+                                document.querySelector(`.server-ssh-pass[data-index="${idx}"]`).value = server.sshPassword || '';
+                                document.querySelector(`.server-redis-path[data-index="${idx}"]`).value = server.redisPath || '/usr/local/bin';
+                                document.querySelector(`.server-desc[data-index="${idx}"]`).value = server.description || '';
+                            });
+                            
+                            // 确保至少2台服务器
+                            while (serverCount < 2) {
+                                addServer();
+                            }
+                            
+                            updateServerCount();
+                        }
+                    }
+                } catch (error) {
+                    showToast('加载数据失败', 'error');
+                }
+            }
+        }
+
+        // 显示进度
+        function showProgress(servers) {
+            const modal = new bootstrap.Modal(document.getElementById('progressModal'));
+            modal.show();
+            
+            const list = document.getElementById('progressList');
+            list.innerHTML = servers.map((s, i) => `
+                <div class="list-group-item d-flex align-items-center justify-content-between py-2" id="progress-item-${i}">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary">${i + 1}</span>
+                        <span class="small">${s.ip}</span>
+                    </div>
+                    <span class="badge bg-light text-muted status-badge" id="status-${i}">
+                        <span class="spinner-border spinner-border-sm" style="width: 12px; height: 12px;"></span>
+                        等待中
+                    </span>
+                </div>
+            `).join('');
+            
+            return modal;
+        }
+
+        // 更新进度
+        function updateProgress(index, status, message) {
+            const badge = document.getElementById(`status-${index}`);
+            const item = document.getElementById(`progress-item-${index}`);
+            if (badge) {
+                if (status === 'success') {
+                    badge.className = 'badge bg-success';
+                    badge.innerHTML = '<i class="bi bi-check-circle"></i> ' + message;
+                    item.classList.add('bg-success', 'bg-opacity-10');
+                } else if (status === 'error') {
+                    badge.className = 'badge bg-danger';
+                    badge.innerHTML = '<i class="bi bi-x-circle"></i> ' + message;
+                    item.classList.add('bg-danger', 'bg-opacity-10');
+                } else if (status === 'checking') {
+                    badge.className = 'badge bg-primary';
+                    badge.innerHTML = '<span class="spinner-border spinner-border-sm" style="width: 12px; height: 12px;"></span> ' + message;
+                }
+            }
+        }
+
+        // 保存
+        document.getElementById('groupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('groupName').value.trim();
+
+            if (!name) {
+                showToast('请填写组名称', 'warning');
+                return;
+            }
+
+            const servers = [];
+            const ipElements = document.querySelectorAll('.server-ip');
+            
+            if (ipElements.length < 2) {
+                showToast('至少需要配置2台服务器', 'warning');
+                return;
+            }
+            
+            ipElements.forEach((ipEl, idx) => {
+                const index = parseInt(ipEl.getAttribute('data-index'));
+                const ip = ipEl.value.trim();
+                const sshPort = parseInt(document.querySelector(`.server-ssh-port[data-index="${index}"]`).value) || 22;
+                const sshUser = document.querySelector(`.server-ssh-user[data-index="${index}"]`).value.trim();
+                const sshPass = document.querySelector(`.server-ssh-pass[data-index="${index}"]`).value;
+                const redisPath = document.querySelector(`.server-redis-path[data-index="${index}"]`).value.trim() || '/usr/local/bin';
+                const desc = document.querySelector(`.server-desc[data-index="${index}"]`).value.trim();
+
+                if (!ip || !sshUser || (!sshPass && action !== 'edit')) {
+                    showToast(`服务器 #${idx+1} 信息不完整`, 'warning');
+                    throw new Error('服务器信息不完整');
+                }
+
+                servers.push({
+                    nodeIndex: idx,
+                    ip: ip,
+                    sshPort: sshPort,
+                    sshUser: sshUser,
+                    sshPassword: sshPass,
+                    redisPath: redisPath,
+                    authType: 0,
+                    description: desc
+                });
+            });
+
+            // 显示进度模态框
+            const progressModal = showProgress(servers);
+            
+            // 模拟检测进度（因为后端是同步检测）
+            for (let i = 0; i < servers.length; i++) {
+                updateProgress(i, 'checking', '检测中...');
+                await new Promise(r => setTimeout(r, 300)); // 模拟延迟
+            }
+
+            const groupData = {
+                name: name,
+                description: document.getElementById('groupDescription').value.trim(),
+                servers: servers
+            };
+
+            try {
+                document.getElementById('progressText').textContent = '正在保存服务器组...';
+                
+                let response;
+                if (action === 'edit') {
+                    response = await axios.put(`/api/groups/${groupId}`, groupData);
+                } else {
+                    response = await axios.post('/api/groups', groupData);
+                }
+
+                if (response.data.code === 200) {
+                    // 更新所有状态为成功
+                    for (let i = 0; i < servers.length; i++) {
+                        updateProgress(i, 'success', '验证通过');
+                    }
+                    document.getElementById('progressText').innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> 保存成功</span>';
+                    setTimeout(() => {
+                        progressModal.hide();
+                        window.location.href = '/groups';
+                    }, 1000);
+                } else {
+                    progressModal.hide();
+                    showToast(response.data.message, 'error');
+                }
+            } catch (error) {
+                progressModal.hide();
+                const msg = error.response?.data?.message || '保存失败';
+                showToast(msg, 'error');
+            }
+        });
+
+        // 初始化
+        initServerForms();
+        loadGroupData();
+    </script>
+</body>
+</html>

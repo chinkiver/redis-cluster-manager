@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('系统配置')"></head>
+<body>
+    <!-- Sidebar -->
+    <aside th:replace="layout :: sidebar"></aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Header -->
+        <header th:replace="layout :: header('系统配置')"></header>
+
+        <!-- Content -->
+        <div class="content-container">
+            <div class="row g-4">
+                <!-- 基本信息配置 -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-info-circle me-2"></i>基本信息</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="basicConfigForm">
+                                <div class="mb-3">
+                                    <label class="form-label">系统名称</label>
+                                    <input type="text" class="form-control" id="sysName" name="sys.name" 
+                                           placeholder="缓存3×3英雄">
+                                    <div class="form-text">显示在页面标题、侧边栏等位置</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">登录页标题</label>
+                                    <input type="text" class="form-control" id="sysLoginTitle" name="sys.login.title" 
+                                           placeholder="缓存3×3英雄">
+                                    <div class="form-text">显示在登录页面的主标题</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">登录页副标题</label>
+                                    <input type="text" class="form-control" id="sysLoginSubtitle" name="sys.login.subtitle" 
+                                           placeholder="Redis集群管理，请登录继续操作">
+                                    <div class="form-text">显示在登录页面的副标题</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">版权信息</label>
+                                    <input type="text" class="form-control" id="sysCopyright" name="sys.copyright" 
+                                           placeholder="Redis集群管理系统">
+                                    <div class="form-text">显示在登录页底部</div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 图片配置 -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-images me-2"></i>图片配置</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="imageConfigForm">
+                                <div class="mb-4">
+                                    <label class="form-label">系统 Logo</label>
+                                    <div class="d-flex align-items-center gap-3 mb-2">
+                                        <img id="logoPreview" src="/Redis.png" alt="Logo" 
+                                             style="width: 64px; height: 64px; object-fit: contain; border: 1px solid #ddd; border-radius: 8px; padding: 4px;">
+                                        <div>
+                                            <input type="file" class="form-control" id="logoFile" accept="image/*" style="max-width: 250px;">
+                                            <div class="form-text mt-1">支持 PNG、JPEG、GIF、SVG，建议尺寸 64×64 或 128×128</div>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" id="sysLogo" name="sys.logo" value="/Redis.png">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">系统 Icon (Favicon)</label>
+                                    <div class="d-flex align-items-center gap-3 mb-2">
+                                        <img id="iconPreview" src="/Redis.png" alt="Icon" 
+                                             style="width: 32px; height: 32px; object-fit: contain; border: 1px solid #ddd; border-radius: 4px; padding: 2px;">
+                                        <div>
+                                            <input type="file" class="form-control" id="iconFile" accept="image/*" style="max-width: 250px;">
+                                            <div class="form-text mt-1">建议尺寸 32×32 或 64×64</div>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" id="sysIcon" name="sys.icon" value="/Redis.png">
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- 主题配置 -->
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h5><i class="bi bi-palette me-2"></i>主题配置</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="themeConfigForm">
+                                <div class="mb-3">
+                                    <label class="form-label">主题色</label>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <input type="color" class="form-control form-control-color" id="sysThemePrimary" 
+                                               name="sys.theme.primary" value="#dc382c" title="选择主题色">
+                                        <input type="text" class="form-control" id="sysThemePrimaryText" 
+                                               value="#dc382c" style="max-width: 120px;">
+                                    </div>
+                                    <div class="form-text">系统的主题颜色（Redis 默认红色）</div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 预览区域 -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-eye me-2"></i>实时预览</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="mb-3">登录页预览</h6>
+                                    <div style="background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%); padding: 30px; border-radius: 12px;">
+                                        <div style="background: white; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-width: 320px; margin: 0 auto; overflow: hidden;">
+                                            <div style="background: linear-gradient(180deg, #1f2937 0%, #111827 100%); color: white; padding: 30px; text-align: center;" id="previewLoginHeader">
+                                                <div style="width: 60px; height: 60px; background: var(--primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px;">
+                                                    <img id="previewLogo" src="/Redis.png" style="width: 40px; height: 40px; object-fit: contain;">
+                                                </div>
+                                                <h5 id="previewLoginTitle" style="font-weight: 600; margin-bottom: 5px;">缓存3×3英雄</h5>
+                                                <p id="previewLoginSubtitle" style="opacity: 0.9; margin: 0; font-size: 0.8rem;">Redis集群管理，请登录继续操作</p>
+                                            </div>
+                                            <div style="padding: 20px; text-align: center; color: #6b7280; font-size: 0.8rem;" id="previewCopyright">
+                                                Redis集群管理系统
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="mb-3">侧边栏预览</h6>
+                                    <div style="background: linear-gradient(180deg, #1f2937 0%, #111827 100%); width: 220px; border-radius: 12px; padding: 20px; color: white;">
+                                        <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                            <img id="previewSidebarLogo" src="/Redis.png" style="width: 32px; height: 32px; object-fit: contain; background: white; border-radius: 6px; padding: 2px;">
+                                            <span id="previewSidebarName" style="font-weight: 600; font-size: 0.9rem;">缓存3×3英雄</span>
+                                        </div>
+                                        <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+                                            <i class="bi bi-house-door"></i>
+                                            <span>首页示例</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="col-12">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <button type="button" class="btn btn-outline-danger" onclick="resetAllConfig()">
+                                <i class="bi bi-arrow-counterclockwise me-2"></i>恢复默认
+                            </button>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-light" onclick="loadConfig()">
+                                <i class="bi bi-arrow-clockwise me-2"></i>刷新
+                            </button>
+                            <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveConfig()">
+                                <i class="bi bi-check-lg me-2"></i>保存配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 结果提示弹框 -->
+    <div class="modal fade" id="resultModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" id="resultModalHeader">
+                    <h5 class="modal-title" id="resultModalTitle">
+                        <i class="bi bi-check-circle-fill text-success"></i> 保存成功
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="resultModalMessage">
+                    系统配置已成功保存！
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    
+    <script>
+        // 当前配置
+        let currentConfig = {};
+
+        // 页面加载时获取配置
+        document.addEventListener('DOMContentLoaded', function() {
+            loadConfig();
+            setupEventListeners();
+            setActiveNav('nav-system-config');
+        });
+
+        // 设置事件监听
+        function setupEventListeners() {
+            // 实时预览更新
+            document.getElementById('sysName').addEventListener('input', updatePreview);
+            document.getElementById('sysLoginTitle').addEventListener('input', updatePreview);
+            document.getElementById('sysLoginSubtitle').addEventListener('input', updatePreview);
+            document.getElementById('sysCopyright').addEventListener('input', updatePreview);
+            document.getElementById('sysThemePrimary').addEventListener('input', function() {
+                document.getElementById('sysThemePrimaryText').value = this.value;
+                updatePreview();
+            });
+            document.getElementById('sysThemePrimaryText').addEventListener('input', function() {
+                document.getElementById('sysThemePrimary').value = this.value;
+                updatePreview();
+            });
+
+            // Logo 上传
+            document.getElementById('logoFile').addEventListener('change', function(e) {
+                handleFileUpload(e.target.files[0], 'logo');
+            });
+
+            // Icon 上传
+            document.getElementById('iconFile').addEventListener('change', function(e) {
+                handleFileUpload(e.target.files[0], 'icon');
+            });
+        }
+
+        // 加载配置
+        async function loadConfig() {
+            try {
+                const response = await axios.get('/api/system/config');
+                if (response.data.code === 200) {
+                    currentConfig = response.data.data;
+                    fillForm(currentConfig);
+                    updatePreview();
+                }
+            } catch (error) {
+                showToast('加载配置失败', 'error');
+            }
+        }
+
+        // 填充表单
+        function fillForm(config) {
+            document.getElementById('sysName').value = config['sys.name'] || '';
+            document.getElementById('sysLoginTitle').value = config['sys.login.title'] || '';
+            document.getElementById('sysLoginSubtitle').value = config['sys.login.subtitle'] || '';
+            document.getElementById('sysCopyright').value = config['sys.copyright'] || '';
+            
+            const themeColor = config['sys.theme.primary'] || '#dc382c';
+            document.getElementById('sysThemePrimary').value = themeColor;
+            document.getElementById('sysThemePrimaryText').value = themeColor;
+            
+            const logo = config['sys.logo'] || '/Redis.png';
+            const icon = config['sys.icon'] || '/Redis.png';
+            
+            document.getElementById('sysLogo').value = logo;
+            document.getElementById('sysIcon').value = icon;
+            document.getElementById('logoPreview').src = logo;
+            document.getElementById('iconPreview').src = icon;
+        }
+
+        // 更新预览
+        function updatePreview() {
+            const name = document.getElementById('sysName').value || '缓存3×3英雄';
+            const loginTitle = document.getElementById('sysLoginTitle').value || '缓存3×3英雄';
+            const loginSubtitle = document.getElementById('sysLoginSubtitle').value || 'Redis集群管理，请登录继续操作';
+            const copyright = document.getElementById('sysCopyright').value || 'Redis集群管理系统';
+            const themeColor = document.getElementById('sysThemePrimary').value || '#dc382c';
+            const logo = document.getElementById('sysLogo').value || '/Redis.png';
+
+            document.getElementById('previewLoginTitle').textContent = loginTitle;
+            document.getElementById('previewLoginSubtitle').textContent = loginSubtitle;
+            document.getElementById('previewCopyright').textContent = copyright;
+            document.getElementById('previewLogo').src = logo;
+            document.getElementById('previewSidebarLogo').src = logo;
+            document.getElementById('previewSidebarName').textContent = name;
+            document.getElementById('previewLoginHeader').style.background = `linear-gradient(180deg, #1f2937 0%, #111827 100%)`;
+            
+            // 更新 logo 预览
+            document.getElementById('logoPreview').src = logo;
+        }
+
+        // 处理文件上传
+        async function handleFileUpload(file, type) {
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', type);
+
+            try {
+                const response = await axios.post('/api/system/upload/logo', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                });
+
+                if (response.data.code === 200) {
+                    const path = response.data.data.path;
+                    if (type === 'logo') {
+                        document.getElementById('sysLogo').value = path;
+                        document.getElementById('logoPreview').src = path;
+                    } else {
+                        document.getElementById('sysIcon').value = path;
+                        document.getElementById('iconPreview').src = path;
+                    }
+                    updatePreview();
+                    showToast('上传成功', 'success');
+                } else {
+                    showToast(response.data.message || '上传失败', 'error');
+                }
+            } catch (error) {
+                showToast('上传失败: ' + (error.response?.data?.message || error.message), 'error');
+            }
+        }
+
+        // 显示结果弹框
+        function showResultModal(success, message) {
+            const modal = document.getElementById('resultModal');
+            const titleEl = document.getElementById('resultModalTitle');
+            const messageEl = document.getElementById('resultModalMessage');
+            const headerEl = document.getElementById('resultModalHeader');
+            
+            if (success) {
+                titleEl.innerHTML = '<i class="bi bi-check-circle-fill text-success me-2"></i>保存成功';
+                messageEl.textContent = message || '系统配置已成功保存！';
+                headerEl.className = 'modal-header border-success';
+            } else {
+                titleEl.innerHTML = '<i class="bi bi-x-circle-fill text-danger me-2"></i>保存失败';
+                messageEl.textContent = message || '保存配置时发生错误，请重试。';
+                headerEl.className = 'modal-header border-danger';
+            }
+            
+            const modalInstance = new bootstrap.Modal(modal);
+            modalInstance.show();
+        }
+
+        // 保存配置
+        async function saveConfig() {
+            console.log('开始保存配置...');
+            
+            const saveBtn = document.getElementById('saveBtn');
+            const originalBtnHtml = saveBtn.innerHTML;
+            
+            // 禁用按钮，显示加载状态
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>保存中...';
+            
+            try {
+                const configs = {
+                    'sys.name': document.getElementById('sysName').value || '缓存3×3英雄',
+                    'sys.logo': document.getElementById('sysLogo').value || '/Redis.png',
+                    'sys.icon': document.getElementById('sysIcon').value || '/Redis.png',
+                    'sys.login.title': document.getElementById('sysLoginTitle').value || '缓存3×3英雄',
+                    'sys.login.subtitle': document.getElementById('sysLoginSubtitle').value || 'Redis集群管理，请登录继续操作',
+                    'sys.copyright': document.getElementById('sysCopyright').value || 'Redis集群管理系统',
+                    'sys.theme.primary': document.getElementById('sysThemePrimary').value || '#dc382c'
+                };
+                
+                console.log('发送配置数据:', configs);
+
+                const response = await axios.post('/api/system/config/batch', configs);
+                console.log('保存响应:', response.data);
+                
+                if (response.data.code === 200) {
+                    // 刷新缓存
+                    await axios.post('/api/system/config/refresh');
+                    console.log('配置刷新完成');
+                    // 显示成功弹框
+                    showResultModal(true, '系统配置已成功保存！');
+                } else {
+                    // 显示失败弹框
+                    showResultModal(false, response.data.message || '保存失败，请重试。');
+                }
+            } catch (error) {
+                console.error('保存配置出错:', error);
+                let errorMsg = '保存配置时发生错误';
+                if (error.response) {
+                    errorMsg = error.response.data?.message || `请求失败(${error.response.status})`;
+                } else if (error.message) {
+                    errorMsg = error.message;
+                }
+                // 显示失败弹框
+                showResultModal(false, errorMsg);
+            } finally {
+                // 恢复按钮状态
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalBtnHtml;
+            }
+        }
+
+        // 恢复默认配置
+        function resetAllConfig() {
+            confirmAction(
+                '确定要恢复所有配置为默认值吗？此操作不可恢复。',
+                async function() {
+                    try {
+                        const response = await axios.post('/api/system/config/reset-all');
+                        if (response.data.code === 200) {
+                            showToast('已恢复默认配置', 'success');
+                            loadConfig();
+                        }
+                    } catch (error) {
+                        showToast('恢复失败', 'error');
+                    }
+                },
+                '<i class="bi bi-exclamation-triangle text-warning"></i> 恢复默认配置',
+                '确认恢复',
+                'btn-danger'
+            );
+        }
+    </script>
+</body>
+</html>

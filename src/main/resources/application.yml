@@ -1,0 +1,85 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: redis-cluster-manager
+
+  # 数据源配置（H2文件数据库）
+  datasource:
+    url: jdbc:h2:file:./data/redis-manager;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  # JPA配置
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+
+  # H2控制台（开发调试用）
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+
+  # Thymeleaf配置
+  thymeleaf:
+    cache: false
+    prefix: classpath:/templates/
+    suffix: .html
+    encoding: UTF-8
+    mode: HTML
+
+  # 静态资源配置
+  web:
+    resources:
+      static-locations: classpath:/static/,classpath:/public/,classpath:/resources/
+
+# Redis Manager配置
+redis:
+  manager:
+    # Redis安装基础路径（远程服务器）
+    remote-install-base: /opt/redis
+    # Redis数据目录（远程服务器）
+    remote-data-base: /data/redis
+    # SSH连接超时（毫秒）
+    ssh-timeout: 30000
+    # 监控采集间隔（毫秒，默认10分钟）
+    monitor-interval: 600000
+    # 支持的Redis版本
+    supported-versions:
+      - redis-6.2.14
+      - redis-5.0.14
+    # 数据库备份配置
+    backup:
+      # 是否启用备份功能
+      enabled: true
+      # 备份执行时间（cron表达式，默认每天凌晨2点）
+      cron: "0 0 2 * * ?"
+      # 备份文件保留天数（默认30天）
+      retain-days: 30
+      # 备份目录路径
+      directory: ./data/backup
+      # 数据库文件路径
+      database-file: ./data/redis-manager.mv.db
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.redis.manager: DEBUG
+    com.redis.manager.ssh.SSHClient: WARN  # SSH命令执行日志调整为WARN，避免频繁scan命令刷日志
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
+  file:
+    name: logs/redis-manager.log

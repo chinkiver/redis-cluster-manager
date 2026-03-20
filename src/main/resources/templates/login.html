@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录</title>
+    <link rel="icon" type="image/png" id="favicon" href="/Redis.png">
+    <link th:href="@{/vendor/bootstrap/css/bootstrap.min.css}" rel="stylesheet">
+    <link th:href="@{/vendor/bootstrap-icons/bootstrap-icons.css}" rel="stylesheet">
+    <style>
+        /* Redis 主题色 - 与后台管理页面保持一致 */
+        :root {
+            --primary: #dc382c;
+            --primary-dark: #a41e11;
+            --primary-light: #ff6b5a;
+            --secondary: #6366f1;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --dark: #1f2937;
+            --light: #f3f4f6;
+            --gray: #6b7280;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            /* 与后台一致的浅灰渐变背景 */
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+        }
+
+        .login-header {
+            /* Redis 红色渐变 - 与后台主题一致 */
+            background: linear-gradient(180deg, var(--dark) 0%, #111827 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .login-header .logo {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 40px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+        }
+        
+        .login-header .logo img {
+            width: 56px;
+            height: 56px;
+            object-fit: contain;
+            padding: 4px;
+        }
+
+        .login-header h3 {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .login-header p {
+            opacity: 0.9;
+            margin: 0;
+        }
+
+        .login-body {
+            padding: 40px 30px;
+        }
+
+        .form-floating {
+            margin-bottom: 20px;
+        }
+
+        .form-floating > .form-control {
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+            height: 56px;
+        }
+
+        .form-floating > .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 0.2rem rgba(220, 56, 44, 0.15);
+        }
+
+        .form-floating > label {
+            padding-left: 16px;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            border: none;
+            font-weight: 600;
+            font-size: 16px;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -10px rgba(220, 56, 44, 0.5);
+        }
+
+        .alert {
+            border-radius: 12px;
+            border: none;
+        }
+
+        .login-footer {
+            text-align: center;
+            padding: 20px 30px;
+            background: var(--light);
+            color: var(--gray);
+            font-size: 14px;
+        }
+
+        /* 动画 */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-card {
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        /* 加载动画 */
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="logo" id="loginLogo">
+                    <i class="bi bi-hdd-stack" id="loginLogoIcon"></i>
+                    <img id="loginLogoImg" src="" style="display: none;">
+                </div>
+                <h3 id="loginTitle">缓存3×3英雄</h3>
+                <p id="loginSubtitle">Redis集群管理，请登录继续操作</p>
+            </div>
+            <div class="login-body">
+                <div id="errorAlert" class="alert alert-danger d-none" role="alert">
+                    <i class="bi bi-exclamation-circle-fill me-2"></i>
+                    <span id="errorMessage"></span>
+                </div>
+                <form id="loginForm">
+                    <div class="form-floating">
+                        <input type="text" class="form-control" id="username" placeholder="用户名" required>
+                        <label for="username"><i class="bi bi-person me-2"></i>用户名</label>
+                    </div>
+                    <div class="form-floating">
+                        <input type="password" class="form-control" id="password" placeholder="密码" required>
+                        <label for="password"><i class="bi bi-lock me-2"></i>密码</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-login" id="loginBtn">
+                        <span class="loading-spinner" id="loadingSpinner"></span>
+                        <span id="btnText">登录</span>
+                    </button>
+                </form>
+            </div>
+            <div class="login-footer" id="loginCopyright">
+                Redis集群管理系统
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认对话框 -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmModalTitle"><i class="bi bi-question-circle text-warning"></i> 确认操作</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="confirmModalMessage"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="confirmModalBtn">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script th:src="@{/vendor/bootstrap/js/bootstrap.bundle.min.js}"></script>
+    <script th:src="@{/vendor/axios/axios.min.js}"></script>
+    <script>
+        // 加载系统配置
+        async function loadSystemConfig() {
+            try {
+                const response = await axios.get('/api/system/config/display');
+                if (response.data.code === 200) {
+                    const config = response.data.data;
+                    
+                    // 更新页面标题
+                    if (config.name) {
+                        document.title = '登录 - ' + config.name;
+                    }
+                    
+                    // 更新 Favicon
+                    if (config.icon) {
+                        document.getElementById('favicon').href = config.icon;
+                    }
+                    
+                    // 更新 Logo
+                    if (config.logo) {
+                        document.getElementById('loginLogoIcon').style.display = 'none';
+                        const logoImg = document.getElementById('loginLogoImg');
+                        logoImg.src = config.logo;
+                        logoImg.style.display = 'block';
+                    }
+                    
+                    // 更新标题
+                    if (config.loginTitle) {
+                        document.getElementById('loginTitle').textContent = config.loginTitle;
+                    }
+                    
+                    // 更新副标题
+                    if (config.loginSubtitle) {
+                        document.getElementById('loginSubtitle').textContent = config.loginSubtitle;
+                    }
+                    
+                    // 更新版权信息
+                    if (config.copyright) {
+                        document.getElementById('loginCopyright').textContent = config.copyright;
+                    }
+                    
+                    // 更新主题色
+                    if (config.themePrimary) {
+                        document.documentElement.style.setProperty('--primary', config.themePrimary);
+                    }
+                }
+            } catch (error) {
+                console.error('加载系统配置失败:', error);
+            }
+        }
+        
+        // 页面加载时获取系统配置
+        document.addEventListener('DOMContentLoaded', loadSystemConfig);
+    </script>
+    <script>
+        // 自定义确认对话框
+        let confirmCallback = null;
+        let confirmModalInstance = null;
+        
+        function confirmAction(message, callback, title, confirmText, confirmClass) {
+            confirmCallback = callback;
+            const confirmModal = document.getElementById('confirmModal');
+            if (!confirmModal) {
+                console.error('confirmModal 不存在，使用原生 confirm');
+                if (confirm(message)) {
+                    callback();
+                }
+                return;
+            }
+            
+            // 设置标题
+            const titleEl = document.getElementById('confirmModalTitle');
+            if (title) {
+                titleEl.innerHTML = title;
+            } else {
+                titleEl.innerHTML = '<i class="bi bi-question-circle text-warning"></i> 确认操作';
+            }
+            
+            // 设置消息内容
+            document.getElementById('confirmModalMessage').innerHTML = message;
+            
+            // 设置确认按钮
+            const confirmBtn = document.getElementById('confirmModalBtn');
+            confirmBtn.textContent = confirmText || '确认';
+            confirmBtn.className = 'btn ' + (confirmClass || 'btn-primary');
+            
+            // 绑定确认事件
+            confirmBtn.onclick = function() {
+                if (confirmCallback) {
+                    confirmCallback();
+                    confirmCallback = null;
+                }
+                if (confirmModalInstance) {
+                    confirmModalInstance.hide();
+                }
+            };
+            
+            // 显示弹窗
+            confirmModalInstance = new bootstrap.Modal(confirmModal);
+            confirmModalInstance.show();
+        }
+        function resetLoginButton() {
+            document.getElementById('loginBtn').disabled = false;
+            document.getElementById('btnText').textContent = '登录';
+            document.getElementById('loadingSpinner').style.display = 'none';
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorAlert').classList.remove('d-none');
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            var username = document.getElementById('username').value.trim();
+            var password = document.getElementById('password').value;
+            var loginBtn = document.getElementById('loginBtn');
+            var btnText = document.getElementById('btnText');
+            var spinner = document.getElementById('loadingSpinner');
+            var errorAlert = document.getElementById('errorAlert');
+            
+            // 基本验证
+            if (!username || !password) {
+                showError('请输入用户名和密码');
+                return;
+            }
+            
+            // 隐藏错误提示
+            errorAlert.classList.add('d-none');
+            
+            // 显示加载状态
+            loginBtn.disabled = true;
+            btnText.textContent = '登录中...';
+            spinner.style.display = 'inline-block';
+            
+            // 使用传统的Promise写法
+            var loginUrl = window.location.origin + '/api/users/login';
+            console.log('登录请求URL:', loginUrl);
+            
+            axios.post('/api/users/login', {
+                username: username,
+                password: password
+            }, { 
+                timeout: 10000,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(function(response) {
+                console.log('登录响应:', response);
+                if (response.data && response.data.code === 200) {
+                    // 登录成功，跳转到首页
+                    window.location.href = '/';
+                } else {
+                    showError((response.data && response.data.message) || '登录失败');
+                    resetLoginButton();
+                }
+            })
+            .catch(function(error) {
+                console.error('登录出错:', error);
+                console.error('错误详情:', {
+                    message: error.message,
+                    config: error.config,
+                    request: error.request,
+                    response: error.response
+                });
+                
+                if (error.response) {
+                    // 收到响应，但状态码不是2xx
+                    showError((error.response.data && error.response.data.message) || '登录失败，请检查用户名和密码 (状态码:' + error.response.status + ')');
+                } else if (error.request) {
+                    // 请求发送了但没收到响应
+                    showError('网络连接失败，请检查服务是否正常运行');
+                } else {
+                    // 请求发送失败
+                    showError('请求发送失败: ' + error.message);
+                }
+                resetLoginButton();
+            });
+        });
+    </script>
+</body>
+</html>

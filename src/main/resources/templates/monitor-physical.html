@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('物理机监控')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('物理机监控')"></header>
+        
+        <div class="content-container">
+            <!-- 服务器组选择区域 -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-hdd-rack me-2"></i>选择服务器组
+                            </label>
+                            <select id="groupSelect" class="form-select">
+                                <option value="">请选择服务器组...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-gear me-2"></i>操作
+                            </label>
+                            <div>
+                                <button id="refreshBtn" class="btn btn-primary" onclick="loadMonitorData()" disabled>
+                                    <i class="bi bi-arrow-clockwise"></i> 刷新数据
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 加载状态提示 -->
+            <div id="loadingStatus" class="alert alert-info d-none">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div>
+                        <strong>正在加载监控数据...</strong>
+                        <div class="small text-muted" id="loadingDetail">正在连接服务器获取物理机指标</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 未选择提示 -->
+            <div id="noSelectionAlert" class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                请先从上方下拉框选择要监控的服务器组
+            </div>
+
+            <!-- 物理机监控卡片 -->
+            <div id="monitorContent" style="display: none;">
+                <div class="row g-4" id="physicalCards">
+                    <!-- 动态生成物理机卡片 -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 磁盘IO说明弹窗 -->
+    <div class="modal fade" id="diskIOHelpModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="bi bi-hdd"></i> 磁盘IO说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-gear-fill text-info"></i> 什么是磁盘IO？</h6>
+                        <p class="mb-0 small">磁盘IO（输入/输出）使用率反映磁盘的繁忙程度，基于 <code>iostat</code> 命令获取的 %util 指标。</p>
+                    </div>
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-speedometer text-info"></i> 数值含义</h6>
+                        <ul class="mb-0 small">
+                            <li><strong>0-60%：</strong>正常，磁盘负载较低</li>
+                            <li><strong>60-80%：</strong>较高，可能存在IO瓶颈</li>
+                            <li><strong>80-100%：</strong>繁忙，磁盘可能已成为性能瓶颈</li>
+                        </ul>
+                    </div>
+                    <div class="alert alert-warning small mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        高IO使用率可能导致Redis响应延迟增加，建议关注。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 网络带宽说明弹窗 -->
+    <div class="modal fade" id="networkHelpModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-ethernet"></i> 网络带宽说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-gear-fill text-primary"></i> 什么是网络带宽？</h6>
+                        <p class="mb-0 small">实时网络传输速率（MB/s），通过1秒间隔采样 <code>/proc/net/dev</code> 计算得出，表示当前网络收发数据的速率。</p>
+                    </div>
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-calculator text-primary"></i> 计算方式</h6>
+                        <p class="mb-0 small">采集两个时间点的网卡收发字节数，计算差值并除以时间间隔，得到当前的实时带宽。</p>
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle"></i> 
+                        该数值为瞬时值，仅反映当前网络活动情况，不代表带宽上限。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 磁盘IO说明弹窗 -->
+    <div class="modal fade" id="diskIOHelpModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="bi bi-hdd"></i> 磁盘IO说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-gear-fill text-info"></i> 什么是磁盘IO？</h6>
+                        <p class="mb-0 small">磁盘IO（输入/输出）使用率反映磁盘的繁忙程度，基于 <code>iostat</code> 命令获取的 %util 指标。</p>
+                    </div>
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-speedometer text-info"></i> 数值含义</h6>
+                        <ul class="mb-0 small">
+                            <li><strong>0-60%：</strong>正常，磁盘负载较低</li>
+                            <li><strong>60-80%：</strong>较高，可能存在IO瓶颈</li>
+                            <li><strong>80-100%：</strong>繁忙，磁盘可能已成为性能瓶颈</li>
+                        </ul>
+                    </div>
+                    <div class="alert alert-warning small mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        高IO使用率可能导致Redis响应延迟增加，建议关注。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 网络带宽说明弹窗 -->
+    <div class="modal fade" id="networkHelpModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-ethernet"></i> 网络带宽说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-gear-fill text-primary"></i> 什么是网络带宽？</h6>
+                        <p class="mb-0 small">实时网络传输速率（MB/s），通过1秒间隔采样 <code>/proc/net/dev</code> 计算得出，表示当前网络收发数据的速率。</p>
+                    </div>
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-calculator text-primary"></i> 计算方式</h6>
+                        <p class="mb-0 small">采集两个时间点的网卡收发字节数，计算差值并除以时间间隔，得到当前的实时带宽。</p>
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle"></i> 
+                        该数值为瞬时值，仅反映当前网络活动情况，不代表带宽上限。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Redis实例数说明弹窗 -->
+    <div class="modal fade" id="instanceCountHelpModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-diagram-3"></i> Redis实例数说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-gear-fill text-success"></i> 统计维度</h6>
+                        <p class="mb-0 small">统计该物理机上运行的 <strong>redis-server 进程数</strong>，通过 <code>ps aux | grep redis-server</code> 命令获取。</p>
+                    </div>
+                    <div class="alert alert-light border">
+                        <h6><i class="bi bi-info-circle-fill text-success"></i> 说明</h6>
+                        <ul class="mb-0 small">
+                            <li>包含该服务器上所有Redis实例（主节点、从节点）</li>
+                            <li>不区分集群归属，只要是redis-server进程都统计</li>
+                            <li>如果实例数为0，表示该服务器当前没有运行Redis服务</li>
+                        </ul>
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-lightbulb"></i> 
+                        提示：集群中每台服务器可以运行多个Redis实例（主节点或从节点），具体数量取决于集群规格。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-monitor-physical');
+
+        let currentGroupId = null;
+
+        // 初始化
+        async function init() {
+            await loadServerGroups();
+            
+            // 初始化tooltip
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+
+        // 加载服务器组列表
+        async function loadServerGroups() {
+            try {
+                const response = await axios.get('/api/groups');
+                if (response.data.code === 200) {
+                    const groups = response.data.data;
+                    const select = document.getElementById('groupSelect');
+                    select.innerHTML = '<option value="">请选择服务器组...</option>' +
+                        groups.map(g => `<option value="${g.id}">${g.name} (${g.servers?.length || 0}台)</option>`).join('');
+                    
+                    // 监听选择变化
+                    select.addEventListener('change', function() {
+                        currentGroupId = this.value;
+                        const refreshBtn = document.getElementById('refreshBtn');
+                        const noSelectionAlert = document.getElementById('noSelectionAlert');
+                        const monitorContent = document.getElementById('monitorContent');
+                        const loadingStatus = document.getElementById('loadingStatus');
+                        
+                        if (currentGroupId) {
+                            refreshBtn.disabled = false;
+                            noSelectionAlert.style.display = 'none';
+                            loadingStatus.classList.remove('d-none');
+                            document.getElementById('loadingDetail').textContent = '正在连接服务器组中的各台物理机获取监控数据...';
+                            loadMonitorData();
+                        } else {
+                            refreshBtn.disabled = true;
+                            noSelectionAlert.style.display = 'block';
+                            monitorContent.style.display = 'none';
+                            loadingStatus.classList.add('d-none');
+                        }
+                    });
+                }
+            } catch (error) {
+                showToast('加载服务器组失败', 'error');
+            }
+        }
+
+        // 加载监控数据
+        async function loadMonitorData() {
+            if (!currentGroupId) {
+                showToast('请先选择服务器组', 'warning');
+                return;
+            }
+
+            const refreshBtn = document.getElementById('refreshBtn');
+            const loadingStatus = document.getElementById('loadingStatus');
+            const loadingDetail = document.getElementById('loadingDetail');
+            const monitorContent = document.getElementById('monitorContent');
+            
+            // 显示加载状态
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 加载中...';
+            loadingStatus.classList.remove('d-none');
+            monitorContent.style.display = 'none';
+            
+            try {
+                loadingDetail.textContent = '正在连接服务器组中的各台物理机...';
+                const response = await axios.get(`/api/monitor/physical?groupId=${currentGroupId}`);
+                
+                if (response.data.code === 200) {
+                    loadingDetail.textContent = '数据获取成功，正在渲染监控面板...';
+                    renderPhysicalCards(response.data.data);
+                    monitorContent.style.display = 'block';
+                }
+            } catch (error) {
+                showToast('加载监控数据失败: ' + (error.response?.data?.message || error.message), 'error');
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 立即刷新';
+                loadingStatus.classList.add('d-none');
+            }
+        }
+
+        // 渲染物理机监控卡片
+        function renderPhysicalCards(hosts) {
+            const container = document.getElementById('physicalCards');
+            
+            if (!hosts || hosts.length === 0) {
+                container.innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            该服务器组没有配置物理机
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = hosts.map((host, index) => {
+                // 判断各项状态（使用固定阈值）
+                const memoryStatus = host.memoryFreePercent < 10 ? 'danger' : 
+                                    host.memoryFreePercent < 20 ? 'warning' : 'success';
+                const cpuStatus = host.cpuUsage > 80 ? 'warning' : 'success';
+                const swapStatus = host.swapUsage > 0 ? 'warning' : 'success';
+
+                return `
+                    <div class="col-md-6 col-xl-4 animate-fade-in" style="animation-delay: ${index * 0.1}s;">
+                        <div class="card h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-hdd-rack me-2"></i>${host.ip}
+                                </h6>
+                                <span class="badge bg-${host.connected ? 'success' : 'danger'}">
+                                    ${host.connected ? '在线' : '离线'}
+                                </span>
+                            </div>
+                            <div class="card-body">
+                                <!-- 内存 -->
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small class="text-muted">内存剩余</small>
+                                        <small class="fw-bold ${memoryStatus === 'danger' ? 'text-danger' : memoryStatus === 'warning' ? 'text-warning' : 'text-success'}">
+                                            ${host.memoryFreePercent?.toFixed(1) || 0}% 
+                                            (${host.memoryFree?.toFixed(1) || 0}GB / ${host.memoryTotal?.toFixed(1) || 0}GB)
+                                        </small>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar bg-${memoryStatus}" 
+                                             style="width: ${host.memoryFreePercent || 0}%"></div>
+                                    </div>
+                                </div>
+
+                                <!-- CPU -->
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small class="text-muted">CPU使用率</small>
+                                        <small class="fw-bold ${cpuStatus === 'warning' ? 'text-warning' : 'text-success'}">
+                                            ${host.cpuUsage?.toFixed(1) || 0}%
+                                        </small>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar bg-${cpuStatus}" 
+                                             style="width: ${host.cpuUsage || 0}%"></div>
+                                    </div>
+                                </div>
+
+                                <!-- 磁盘IO -->
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small class="text-muted">
+                                            磁盘IO
+                                            <a href="javascript:void(0)" onclick="showDiskIOHelp()" class="text-muted">
+                                                <i class="bi bi-question-circle"></i>
+                                            </a>
+                                        </small>
+                                        <small class="fw-bold">${host.diskIOUsage?.toFixed(1) || 0}%</small>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar bg-info" 
+                                             style="width: ${Math.min(host.diskIOUsage || 0, 100)}%"></div>
+                                    </div>
+                                </div>
+
+                                <!-- 网络 -->
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small class="text-muted">
+                                            网络带宽
+                                            <a href="javascript:void(0)" onclick="showNetworkHelp()" class="text-muted">
+                                                <i class="bi bi-question-circle"></i>
+                                            </a>
+                                        </small>
+                                        <small class="fw-bold">${host.networkBandwidthMB?.toFixed(2) || 0} MB/s</small>
+                                    </div>
+                                </div>
+
+                                <!-- Swap -->
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small class="text-muted">Swap使用</small>
+                                        <small class="fw-bold ${swapStatus === 'warning' ? 'text-warning' : ''}">
+                                            ${host.swapUsage?.toFixed(1) || 0}%
+                                        </small>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar bg-${swapStatus}" 
+                                             style="width: ${host.swapUsage || 0}%"></div>
+                                    </div>
+                                </div>
+
+                                <!-- 实例数 -->
+                                <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                                    <span class="text-muted">
+                                        <i class="bi bi-diagram-3 me-1"></i>Redis实例
+                                        <a href="javascript:void(0)" onclick="showInstanceCountHelp()" class="text-muted ms-1">
+                                            <i class="bi bi-question-circle small"></i>
+                                        </a>
+                                    </span>
+                                    <span class="badge bg-primary">${host.instanceCount || 0} 个</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 显示磁盘IO说明
+        function showDiskIOHelp() {
+            new bootstrap.Modal(document.getElementById('diskIOHelpModal')).show();
+        }
+
+        // 显示网络带宽说明
+        function showNetworkHelp() {
+            new bootstrap.Modal(document.getElementById('networkHelpModal')).show();
+        }
+
+        // 显示Redis实例数说明
+        function showInstanceCountHelp() {
+            new bootstrap.Modal(document.getElementById('instanceCountHelpModal')).show();
+        }
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html>

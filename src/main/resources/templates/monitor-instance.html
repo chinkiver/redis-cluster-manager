@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('实例监控')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('实例监控')"></header>
+        
+        <div class="content-container">
+            <!-- 集群选择区域 -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-hdd-rack me-2"></i>选择服务器组
+                            </label>
+                            <select id="serverGroupSelect" class="form-select">
+                                <option value="">请选择服务器组...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-grid-3x3-gap me-2"></i>选择集群
+                            </label>
+                            <select id="clusterSelect" class="form-select" disabled>
+                                <option value="">请先选择服务器组</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-gear me-2"></i>操作
+                            </label>
+                            <div>
+                                <button id="refreshBtn" class="btn btn-primary" onclick="loadMonitorData()" disabled>
+                                    <i class="bi bi-arrow-clockwise"></i> 刷新数据
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 加载状态提示 -->
+            <div id="loadingStatus" class="alert alert-info d-none">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div>
+                        <strong>正在加载实例监控数据...</strong>
+                        <div class="small text-muted" id="loadingDetail">正在连接集群各节点获取实例指标</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 未选择提示 -->
+            <div id="noSelectionAlert" class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                请先选择服务器组，然后选择要监控的集群
+            </div>
+
+            <!-- 实例监控表格 -->
+            <div id="monitorContent" style="display: none;">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="bi bi-cpu me-2"></i>实例监控列表
+                        </h6>
+                        <span class="badge bg-info" id="instanceCountBadge">0 个实例</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>实例地址</th>
+                                        <th>角色</th>
+                                        <th>
+                                            状态
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('status')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                        <th>
+                                            内存使用
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('memory')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                        <th>
+                                            碎片率
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('frag')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                        <th>
+                                            连接数
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('clients')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                        <th>
+                                            QPS
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('qps')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                        <th>
+                                            延迟(P99)
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('latency')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                        <th>
+                                            复制延迟
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('repl')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                        <th>
+                                            慢查询
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('slow')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                        <th>
+                                            AOF重写
+                                            <a href="javascript:void(0)" onclick="showMetricHelp('aof')" class="text-muted ms-1">
+                                                <i class="bi bi-question-circle small"></i>
+                                            </a>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="instanceTable">
+                                    <!-- 动态生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-monitor-instance');
+
+        let currentClusterId = null;
+
+        // 存储所有集群数据
+        let allClusters = [];
+        let currentServerGroupId = '';
+
+        // 初始化
+        async function init() {
+            await loadServerGroups();
+        }
+
+        // 加载服务器组列表
+        async function loadServerGroups() {
+            try {
+                const response = await axios.get('/api/groups');
+                if (response.data.code === 200) {
+                    const groups = response.data.data || [];
+                    const select = document.getElementById('serverGroupSelect');
+                    select.innerHTML = '<option value="">请选择服务器组...</option>' +
+                        groups.map(g => `<option value="${g.id}">${g.name} (${g.servers ? g.servers.length : 0}台)</option>`).join('');
+                    
+                    // 默认选中"默认服务器组"如果存在
+                    const defaultGroup = groups.find(g => g.name === '默认服务器组');
+                    if (defaultGroup) {
+                        currentServerGroupId = defaultGroup.id.toString();
+                        select.value = currentServerGroupId;
+                        // 加载该组的集群
+                        await loadClustersByGroup(currentServerGroupId);
+                    }
+                    
+                    // 监听服务器组选择变化
+                    select.addEventListener('change', function() {
+                        currentServerGroupId = this.value;
+                        currentClusterId = '';
+                        // 重置集群下拉框
+                        const clusterSelect = document.getElementById('clusterSelect');
+                        clusterSelect.innerHTML = '<option value="">请选择集群...</option>';
+                        clusterSelect.disabled = !currentServerGroupId;
+                        
+                        // 重置界面状态
+                        document.getElementById('refreshBtn').disabled = true;
+                        document.getElementById('noSelectionAlert').style.display = 'block';
+                        document.getElementById('monitorContent').style.display = 'none';
+                        
+                        if (currentServerGroupId) {
+                            loadClustersByGroup(currentServerGroupId);
+                        }
+                    });
+                }
+            } catch (error) {
+                showToast('加载服务器组列表失败', 'error');
+            }
+        }
+
+        // 根据服务器组加载集群列表
+        async function loadClustersByGroup(groupId) {
+            try {
+                const response = await axios.get('/api/clusters');
+                if (response.data.code === 200) {
+                    allClusters = response.data.data || [];
+                    // 筛选当前服务器组的集群
+                    const filteredClusters = allClusters.filter(c => 
+                        c.serverGroupId && c.serverGroupId.toString() === groupId.toString()
+                    );
+                    
+                    const clusterSelect = document.getElementById('clusterSelect');
+                    clusterSelect.disabled = false;
+                    
+                    if (filteredClusters.length === 0) {
+                        clusterSelect.innerHTML = '<option value="">该服务器组下无集群</option>';
+                    } else {
+                        clusterSelect.innerHTML = '<option value="">请选择集群...</option>' +
+                            filteredClusters.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+                    }
+                }
+            } catch (error) {
+                showToast('加载集群列表失败', 'error');
+            }
+        }
+
+        // 监听集群选择变化
+        document.getElementById('clusterSelect').addEventListener('change', function() {
+            currentClusterId = this.value;
+            const refreshBtn = document.getElementById('refreshBtn');
+            const noSelectionAlert = document.getElementById('noSelectionAlert');
+            const monitorContent = document.getElementById('monitorContent');
+            const loadingStatus = document.getElementById('loadingStatus');
+            
+            if (currentClusterId) {
+                refreshBtn.disabled = false;
+                noSelectionAlert.style.display = 'none';
+                loadingStatus.classList.remove('d-none');
+                document.getElementById('loadingDetail').textContent = '正在连接集群各节点获取实例监控数据...';
+                loadMonitorData();
+            } else {
+                refreshBtn.disabled = true;
+                noSelectionAlert.style.display = 'block';
+                monitorContent.style.display = 'none';
+                loadingStatus.classList.add('d-none');
+            }
+        });
+
+        // 加载监控数据
+        async function loadMonitorData() {
+            if (!currentClusterId) {
+                showToast('请先选择集群', 'warning');
+                return;
+            }
+
+            const refreshBtn = document.getElementById('refreshBtn');
+            const loadingStatus = document.getElementById('loadingStatus');
+            const loadingDetail = document.getElementById('loadingDetail');
+            const monitorContent = document.getElementById('monitorContent');
+            
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 加载中...';
+            loadingStatus.classList.remove('d-none');
+            loadingDetail.textContent = '正在连接集群各节点获取内存、QPS、连接数等指标...';
+
+            try {
+                const response = await axios.get(`/api/monitor/instances?clusterId=${currentClusterId}`);
+                if (response.data.code === 200) {
+                    loadingDetail.textContent = '数据获取成功，正在渲染监控列表...';
+                    renderInstanceTable(response.data.data);
+                    monitorContent.style.display = 'block';
+                }
+            } catch (error) {
+                showToast('加载监控数据失败: ' + (error.response?.data?.message || error.message), 'error');
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 立即刷新';
+                loadingStatus.classList.add('d-none');
+            }
+        }
+
+        // 状态显示函数 - 支持多种状态格式
+        function renderStatusBadge(status) {
+            // 数字状态: 1=在线, 0/其他=离线
+            if (status === 1 || status === '1') {
+                return '<span class="badge bg-success">在线</span>';
+            } else if (status === 0 || status === '0') {
+                return '<span class="badge bg-danger">离线</span>';
+            } else if (typeof status === 'string') {
+                // 字符串状态
+                const statusLower = status.toLowerCase();
+                if (statusLower === 'running' || statusLower === 'online' || statusLower === 'up') {
+                    return '<span class="badge bg-success">在线</span>';
+                } else if (statusLower === 'stopped' || statusLower === 'offline' || statusLower === 'down' || statusLower === 'error') {
+                    return '<span class="badge bg-danger">离线</span>';
+                } else if (statusLower === 'unknown' || statusLower === 'unreachable') {
+                    return '<span class="badge bg-secondary">未知</span>';
+                }
+            }
+            // 默认处理
+            return `<span class="badge bg-secondary">${status || '未知'}</span>`;
+        }
+
+        // 指标说明配置
+        const metricHelpConfig = {
+            status: {
+                title: '实例状态',
+                icon: 'bi-activity',
+                color: 'info',
+                content: `
+                    <p><strong>统计维度：</strong>实时检测 Redis 实例的连通状态</p>
+                    <p><strong>检测方式：</strong>通过 redis-cli ping 命令检测节点响应</p>
+                    <ul>
+                        <li><span class="badge bg-success">在线</span> - 节点响应 PONG，运行正常</li>
+                        <li><span class="badge bg-danger">离线</span> - 节点无响应或连接失败</li>
+                        <li><span class="badge bg-secondary">未知</span> - 状态不确定</li>
+                    </ul>
+                `
+            },
+            memory: {
+                title: '内存使用',
+                icon: 'bi-memory',
+                color: 'primary',
+                content: `
+                    <p><strong>统计维度：</strong>单个实例的内存使用情况</p>
+                    <p><strong>数据来源：</strong>info memory 命令</p>
+                    <ul>
+                        <li><strong>使用率</strong> = used_memory / maxmemory × 100%</li>
+                        <li><strong>使用量</strong> = used_memory (字节)</li>
+                        <li><strong>限制量</strong> = maxmemory (字节)</li>
+                    </ul>
+                    <p class="text-muted small">注：当未设置 maxmemory 时，使用率计算可能不准确</p>
+                `
+            },
+            frag: {
+                title: '内存碎片率',
+                icon: 'bi-puzzle',
+                color: 'warning',
+                content: `
+                    <p><strong>统计维度：</strong>内存碎片化程度</p>
+                    <p><strong>数据来源：</strong>mem_fragmentation_ratio 指标</p>
+                    <ul>
+                        <li><strong>计算公式</strong> = used_memory_rss / used_memory</li>
+                        <li><span class="badge bg-success">≤1.5</span> - 碎片率正常</li>
+                        <li><span class="badge bg-warning">1.5~2.0</span> - 碎片率偏高，建议关注</li>
+                        <li><span class="badge bg-danger">>2.0</span> - 碎片率过高，建议重启实例</li>
+                    </ul>
+                    <p class="text-muted small">注：较高的碎片率意味着操作系统分配了更多内存给Redis但未被有效利用</p>
+                `
+            },
+            clients: {
+                title: '连接数',
+                icon: 'bi-people',
+                color: 'info',
+                content: `
+                    <p><strong>统计维度：</strong>当前客户端连接数</p>
+                    <p><strong>数据来源：</strong>connected_clients 指标</p>
+                    <ul>
+                        <li>表示当前与此实例建立连接的客户端数量</li>
+                        <li>包括业务连接、监控连接、复制连接等</li>
+                    </ul>
+                `
+            },
+            qps: {
+                title: 'QPS (每秒查询数)',
+                icon: 'bi-lightning',
+                color: 'warning',
+                content: `
+                    <p><strong>统计维度：</strong>实时每秒处理的命令数</p>
+                    <p><strong>数据来源：</strong>instantaneous_ops_per_sec 指标</p>
+                    <ul>
+                        <li>反是实例当前的负载压力</li>
+                        <li>包括读写命令的总和</li>
+                        <li>数值会随业务高峰低谷波动</li>
+                    </ul>
+                `
+            },
+            latency: {
+                title: '延迟 P99',
+                icon: 'bi-clock',
+                color: 'primary',
+                content: `
+                    <p><strong>统计维度：</strong>命令执行延迟的 99% 分位数</p>
+                    <p><strong>测试方式：</strong>redis-cli --latency 采样1秒</p>
+                    <ul>
+                        <li><span class="badge bg-success">≤10ms</span> - 延迟正常</li>
+                        <li><span class="badge bg-warning">>10ms</span> - 延迟较高，建议关注</li>
+                        <li>P99 意味着 99% 的命令响应时间小于此值</li>
+                    </ul>
+                    <p class="text-muted small">注：延迟受网络、CPU、内存等因素影响</p>
+                `
+            },
+            repl: {
+                title: '复制延迟',
+                icon: 'bi-diagram-2',
+                color: 'info',
+                content: `
+                    <p><strong>统计维度：</strong>从节点与主节点的数据差异时间</p>
+                    <p><strong>数据来源：</strong>master_last_io_seconds_ago 和 master_repl_offset</p>
+                    <ul>
+                        <li><strong>0s</strong> - 从节点完全跟上主节点</li>
+                        <li><span class="badge bg-warning">>10s</span> - 复制延迟较高</li>
+                        <li><span class="badge bg-danger">较大延迟</span> - 可能存在网络或性能问题</li>
+                    </ul>
+                    <p class="text-muted small">注：主节点显示 "-"，仅从节点显示实际延迟</p>
+                `
+            },
+            slow: {
+                title: '慢查询数量',
+                icon: 'bi-stopwatch',
+                color: 'danger',
+                content: `
+                    <p><strong>统计维度：</strong>慢查询日志中的记录数</p>
+                    <p><strong>数据来源：</strong>SLOWLOG LEN 命令</p>
+                    <ul>
+                        <li>记录执行时间超过 slowlog-log-slower-than 阈值的命令</li>
+                        <li>数值越高表示存在更多慢查询</li>
+                        <li>建议定期清理：SLOWLOG RESET</li>
+                    </ul>
+                `
+            },
+            aof: {
+                title: 'AOF 重写状态',
+                icon: 'bi-arrow-repeat',
+                color: 'success',
+                content: `
+                    <p><strong>统计维度：</strong>AOF 文件重写进程状态</p>
+                    <p><strong>数据来源：</strong>aof_rewrite_in_progress 指标</p>
+                    <ul>
+                        <li><span class="badge bg-info">进行中</span> - 正在执行 AOF 重写</li>
+                        <li><span class="text-muted">暂停</span> - 未在进行 AOF 重写</li>
+                    </ul>
+                    <p class="text-muted small">AOF 重写会压缩 AOF 文件大小，过程中可能影响性能</p>
+                `
+            }
+        };
+
+        // 显示指标说明弹框
+        function showMetricHelp(metricKey) {
+            const config = metricHelpConfig[metricKey];
+            if (!config) return;
+            
+            const modalHtml = `
+                <div class="modal fade" id="metricHelpModal" tabindex="-1">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-${config.color} text-white">
+                                <h5 class="modal-title">
+                                    <i class="bi ${config.icon} me-2"></i>${config.title}
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                ${config.content}
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">知道了</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 移除已存在的弹框
+            const existingModal = document.getElementById('metricHelpModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // 添加新弹框并显示
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            new bootstrap.Modal(document.getElementById('metricHelpModal')).show();
+        }
+
+        // 渲染实例监控表格
+        function renderInstanceTable(instances) {
+            const tbody = document.getElementById('instanceTable');
+            document.getElementById('instanceCountBadge').textContent = `${instances?.length || 0} 个实例`;
+            
+            if (!instances || instances.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="11" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox display-4"></i>
+                            <p class="mt-2">该集群没有实例数据</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = instances.map((inst, index) => {
+                // 状态判断（使用固定阈值）
+                const memoryStatus = inst.memoryUsagePercent > 95 ? 'danger' : 
+                                   inst.memoryUsagePercent > 80 ? 'warning' : 'success';
+                const fragStatus = inst.fragmentationRatio > 2.0 ? 'danger' : 
+                                 inst.fragmentationRatio > 1.5 ? 'warning' : 'success';
+                const latencyStatus = inst.latencyP99 > 10 ? 'warning' : 'success';
+
+                return `
+                    <tr class="animate-fade-in" style="animation-delay: ${index * 0.05}s;">
+                        <td>
+                            <code>${inst.address}</code>
+                            <div class="small text-muted">${inst.physicalHost || ''}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-${inst.role === 'master' ? 'danger' : 'info'}">
+                                ${inst.role === 'master' ? '主' : '从'}
+                            </span>
+                        </td>
+                        <td>
+                            ${renderStatusBadge(inst.status)}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="progress flex-grow-1" style="width: 60px; height: 6px;">
+                                    <div class="progress-bar bg-${memoryStatus}" 
+                                         style="width: ${inst.memoryUsagePercent || 0}%"></div>
+                                </div>
+                                <span class="small ${memoryStatus === 'danger' ? 'text-danger fw-bold' : ''}">
+                                    ${inst.memoryUsagePercent?.toFixed(1) || 0}%
+                                </span>
+                            </div>
+                            <small class="text-muted">${inst.memoryUsed || 0}/${inst.memoryMax || 0}MB</small>
+                        </td>
+                        <td>
+                            <span class="badge bg-${fragStatus}">${inst.fragmentationRatio?.toFixed(2) || '-'}</span>
+                        </td>
+                        <td>${inst.connectedClients || 0}</td>
+                        <td>${inst.qps || 0}</td>
+                        <td>
+                            <span class="${latencyStatus === 'warning' ? 'text-warning fw-bold' : ''}">
+                                ${inst.latencyP99 || 0}ms
+                            </span>
+                        </td>
+                        <td>
+                            ${inst.role === 'slave' ? 
+                                (inst.replicationDelay > 10 ? 
+                                    `<span class="text-danger fw-bold">${inst.replicationDelay}s</span>` :
+                                    `<span>${inst.replicationDelay || 0}s</span>`) :
+                                '<span class="text-muted">-</span>'
+                            }
+                        </td>
+                        <td>
+                            ${inst.slowQueries > 0 ? 
+                                `<span class="badge bg-warning text-dark">${inst.slowQueries}</span>` :
+                                '<span class="text-muted">0</span>'
+                            }
+                        </td>
+                        <td>
+                            ${inst.aofRewriteInProgress ? 
+                                '<span class="badge bg-info">进行中</span>' :
+                                '<span class="text-muted">暂停</span>'
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html>

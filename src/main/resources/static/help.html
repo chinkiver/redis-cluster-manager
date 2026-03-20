@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis Cluster Manager - 缓存英雄</title>
+    <style>
+        :root {
+            --primary: #dc382d;
+            --primary-dark: #b33028;
+            --secondary: #2c3e50;
+            --accent: #3498db;
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --text: #2c3e50;
+            --text-light: #6c757d;
+            --border: #e9ecef;
+            --code-bg: #f4f4f4;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --sidebar-width: 280px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.8;
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        /* 侧边栏导航 */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--card-bg);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            z-index: 100;
+            padding: 20px 0;
+        }
+
+        .sidebar-header {
+            padding: 0 20px 20px;
+            border-bottom: 2px solid var(--primary);
+            margin-bottom: 20px;
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.5rem;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-header .subtitle {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-top: 5px;
+        }
+
+        .nav-menu {
+            list-style: none;
+        }
+
+        .nav-menu li {
+            margin: 2px 0;
+        }
+
+        .nav-menu a {
+            display: block;
+            padding: 8px 20px;
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.9rem;
+            border-left: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .nav-menu a:hover {
+            background: var(--bg);
+            color: var(--primary);
+            border-left-color: var(--primary);
+        }
+
+        .nav-menu .nav-h2 {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .nav-menu .nav-h3 {
+            padding-left: 35px;
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+
+        /* 主内容区 */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 80px 60px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .hero .tagline {
+            font-size: 1.3rem;
+            opacity: 0.9;
+            max-width: 800px;
+            margin: 0 auto 40px;
+        }
+
+        .hero-badges {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .content {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+
+        /* 标题样式 */
+        h2 {
+            font-size: 2rem;
+            color: var(--secondary);
+            margin: 50px 0 25px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h3 {
+            font-size: 1.4rem;
+            color: var(--secondary);
+            margin: 35px 0 20px;
+            padding-left: 15px;
+            border-left: 4px solid var(--accent);
+        }
+
+        h4 {
+            font-size: 1.1rem;
+            color: var(--text);
+            margin: 25px 0 15px;
+        }
+
+        /* 段落和文本 */
+        p {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+
+        /* 链接 */
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* 表格 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        th {
+            background: var(--secondary);
+            color: white;
+            padding: 14px 16px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:hover {
+            background: var(--bg);
+        }
+
+        /* 代码块 */
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 20px 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        code {
+            background: var(--code-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: var(--danger);
+        }
+
+        pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        /* 列表 */
+        ul, ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+
+        /* 引用块 */
+        blockquote {
+            background: #fff3cd;
+            border-left: 4px solid var(--warning);
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        blockquote.warning {
+            background: #f8d7da;
+            border-left-color: var(--danger);
+        }
+
+        blockquote.info {
+            background: #d1ecf1;
+            border-left-color: var(--accent);
+        }
+
+        blockquote.success {
+            background: #d4edda;
+            border-left-color: var(--success);
+        }
+
+        /* 特性卡片 */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border-top: 4px solid var(--primary);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+
+        .feature-card h4 {
+            color: var(--primary);
+            margin-top: 0;
+            font-size: 1.1rem;
+        }
+
+        .feature-card p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            margin-bottom: 0;
+        }
+
+        /* 架构图 */
+        .architecture {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            margin: 30px 0;
+            overflow-x: auto;
+        }
+
+        .architecture pre {
+            background: transparent;
+            color: var(--text);
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+
+        /* 步骤指示器 */
+        .steps {
+            counter-reset: step;
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .steps > li {
+            position: relative;
+            padding-left: 60px;
+            margin: 25px 0;
+            min-height: 40px;
+        }
+
+        .steps > li::before {
+            counter-increment: step;
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .steps > li:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            left: 19px;
+            top: 45px;
+            width: 2px;
+            height: calc(100% + 10px);
+            background: var(--border);
+        }
+
+        /* 标签页 */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* 回到顶部按钮 */
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            box-shadow: 0 4px 12px rgba(220, 56, 45, 0.4);
+            transition: all 0.3s;
+            z-index: 99;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .back-to-top:hover {
+            background: var(--primary-dark);
+            transform: translateY(-3px);
+        }
+
+        /* 页脚 */
+        .footer {
+            background: var(--secondary);
+            color: white;
+            text-align: center;
+            padding: 40px;
+            margin-top: 60px;
+        }
+
+        .footer p {
+            margin: 5px 0;
+        }
+
+        .footer .heart {
+            color: var(--primary);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .menu-toggle {
+                display: block;
+                position: fixed;
+                top: 20px;
+                left: 20px;
+                z-index: 101;
+                background: var(--primary);
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 8px;
+                cursor: pointer;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                padding: 50px 20px;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+            }
+
+            h3 {
+                font-size: 1.2rem;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 0.85rem;
+            }
+
+            th, td {
+                padding: 10px;
+            }
+        }
+
+        /* 打印样式 */
+        @media print {
+            .sidebar, .back-to-top, .menu-toggle {
+                display: none;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .hero {
+                background: var(--secondary) !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+
+        /* 锚点偏移修复 */
+        section[id] {
+            scroll-margin-top: 20px;
+        }
+
+        /* 高亮当前章节 */
+        .nav-menu a.active {
+            background: #fff5f5;
+            color: var(--primary);
+            border-left-color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* 目录折叠按钮 */
+        .nav-toggle {
+            display: none;
+        }
+
+        /* 搜索框 */
+        .search-box {
+            padding: 0 20px 20px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--primary);
+        }
+
+        /* 快捷操作按钮 */
+        .quick-actions {
+            display: flex;
+            gap: 15px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(220, 56, 45, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+    </style>
+</head>
+<body>
+    <!-- 移动端菜单按钮 -->
+    <button class="menu-toggle" onclick="toggleSidebar()">☰ 菜单</button>
+
+    <!-- 侧边栏导航 -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h1>🚀 Redis Cluster Manager</h1>
+            <div class="subtitle">企业级Redis集群管理平台</div>
+        </div>
+        
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="搜索文档内容..." onkeyup="searchContent()">
+        </div>
+
+        <ul class="nav-menu" id="navMenu">
+            <li><a href="#features" class="nav-h2">✨ 功能特性</a></li>
+            <li><a href="#architecture" class="nav-h2">🏗️ 技术架构</a></li>
+            <li><a href="#requirements" class="nav-h2">📋 系统要求</a></li>
+            <li><a href="#quickstart" class="nav-h2">🚀 快速开始</a></li>
+            <li><a href="#guide" class="nav-h2">📖 使用指南</a></li>
+            <li><a href="#guide-template" class="nav-h3">配置模板</a></li>
+            <li><a href="#guide-server" class="nav-h3">服务器组</a></li>
+            <li><a href="#guide-cluster" class="nav-h3">创建集群</a></li>
+            <li><a href="#guide-import" class="nav-h3">导入集群</a></li>
+            <li><a href="#guide-monitor" class="nav-h3">监控管理</a></li>
+            <li><a href="#guide-config" class="nav-h3">动态配置</a></li>
+            <li><a href="#guide-data" class="nav-h3">数据浏览</a></li>
+            <li><a href="#configuration" class="nav-h2">⚙️ 配置说明</a></li>
+            <li><a href="#api" class="nav-h2">🔌 API接口</a></li>
+            <li><a href="#structure" class="nav-h2">📁 项目结构</a></li>
+            <li><a href="#faq" class="nav-h2">❓ 常见问题</a></li>
+            <li><a href="#security" class="nav-h2">🔒 安全建议</a></li>
+            <li><a href="#roadmap" class="nav-h2">🗺️ 开发计划</a></li>
+        </ul>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+        <!-- 首屏英雄区 -->
+        <header class="hero">
+            <h1>Redis Cluster Manager</h1>
+            <p class="tagline">
+                企业级Redis集群可视化管理平台，支持多服务器组管理、3主3从集群快速创建、
+                实时监控告警、动态参数配置等完整功能，让Redis集群运维更简单高效。
+            </p>
+            <div class="hero-badges">
+                <span class="badge">🔥 Redis 5.x/6.x</span>
+                <span class="badge">📊 实时监控</span>
+                <span class="badge">⚡ 动态配置</span>
+                <span class="badge">🔐 安全可靠</span>
+            </div>
+        </header>
+
+        <div class="content">
+            <!-- 快捷操作 -->
+            <div class="quick-actions">
+                <a href="#quickstart" class="btn btn-primary">🚀 快速开始</a>
+                <a href="#api" class="btn btn-secondary">📚 API文档</a>
+                <a href="#configuration" class="btn btn-secondary">⚙️ 配置参考</a>
+            </div>
+
+            <!-- 功能特性 -->
+            <section id="features">
+                <h2>✨ 功能特性</h2>
+                
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>👤 用户认证</h4>
+                        <p>安全的登录/登出机制，Session会话管理</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🖥️ 服务器组管理</h4>
+                        <p>支持3-6台服务器分组管理，SSH连接测试，系统信息采集</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>⚙️ 集群生命周期</h4>
+                        <p>创建、启动、停止、删除、导入现有集群一站式管理</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📋 配置模板</h4>
+                        <p>按Redis版本管理配置模板，支持占位符动态替换</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🔧 动态配置</h4>
+                        <p>运行时修改Redis参数，支持单实例和批量操作</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🔍 数据浏览</h4>
+                        <p>查询缓存Key列表，查看Key的Value值和类型</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📊 多维度监控</h4>
+                        <p>物理机监控、实例监控、集群级监控三层监控体系</p>
+                    </div>
+                </div>
+
+                <h3>部署模式支持</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>模式</th>
+                            <th>服务器数量</th>
+                            <th>架构说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>标准模式</strong></td>
+                            <td>6台</td>
+                            <td>3主3从集群，每台服务器运行一个Redis实例</td>
+                        </tr>
+                        <tr>
+                            <td><strong>交叉备份模式</strong></td>
+                            <td>3台</td>
+                            <td>每台服务器运行1主1从两个实例，实现交叉备份</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- 技术架构 -->
+            <section id="architecture">
+                <h2>🏗️ 技术架构</h2>
+                
+                <h3>系统架构图</h3>
+                <div class="architecture">
+                    <pre>
+┌─────────────────────────────────────────────────────────────────┐
+│                        Web 前端层                                │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐ │
+│  │   首页仪表盘 │ │ 服务器组管理 │ │  集群管理   │ │  监控中心  │ │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘ │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐               │
+│  │ 配置模板管理 │ │  数据浏览   │ │  用户中心   │               │
+│  └─────────────┘ └─────────────┘ └─────────────┘               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                      RESTful API 层                              │
+│  /api/users  /api/groups  /api/clusters  /api/monitor          │
+│  /api/config  /api/deploy                                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                      业务服务层                                  │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐ │
+│  │ UserService │ │ServerGroup  │ │Cluster      │ │RedisConfig│ │
+│  │             │ │   Service   │ │  Service    │ │  Service  │ │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘ │
+│  ┌─────────────┐ ┌─────────────┐                               │
+│  │RedisDeploy  │ │RedisMonitor │                               │
+│  │  Service    │ │  Service    │                               │
+│  └─────────────┘ └─────────────┘                               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                      数据访问层                                  │
+│         JPA Repository (H2 / MySQL / PostgreSQL)                │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                      基础设施层                                  │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐ │
+│  │  SSH连接池  │ │ Jedis客户端 │ │Thymeleaf    │ │  文件系统  │ │
+│  │  (JSch)     │ │             │ │ 模板引擎    │ │           │ │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                    </pre>
+                </div>
+
+                <h3>技术栈</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>技术</th>
+                            <th>版本</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Spring Boot</td><td>2.7.18</td><td>核心框架</td></tr>
+                        <tr><td>JDK</td><td>1.8+</td><td>Java运行时</td></tr>
+                        <tr><td>Thymeleaf</td><td>3.x</td><td>服务端模板引擎</td></tr>
+                        <tr><td>Spring Data JPA</td><td>2.7.x</td><td>数据持久层</td></tr>
+                        <tr><td>H2 Database</td><td>2.1.214</td><td>默认嵌入式数据库</td></tr>
+                        <tr><td>MySQL Connector</td><td>8.0.33</td><td>MySQL支持</td></tr>
+                        <tr><td>Jedis</td><td>4.4.6</td><td>Redis Java客户端</td></tr>
+                        <tr><td>JSch</td><td>0.1.55</td><td>SSH连接库</td></tr>
+                        <tr><td>Fastjson</td><td>2.0.43</td><td>JSON处理</td></tr>
+                        <tr><td>Apache Commons</td><td>3.12.0</td><td>工具库</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- 系统要求 -->
+            <section id="requirements">
+                <h2>📋 系统要求</h2>
+                
+                <h3>服务端要求</h3>
+                <ul>
+                    <li><strong>JDK</strong>: 1.8 或更高版本</li>
+                    <li><strong>Maven</strong>: 3.6+（用于编译构建）</li>
+                    <li><strong>内存</strong>: 建议 2GB+</li>
+                    <li><strong>磁盘</strong>: 建议 10GB+ 可用空间</li>
+                </ul>
+
+                <h3>被管理服务器要求</h3>
+                <ul>
+                    <li><strong>操作系统</strong>: Linux（CentOS 7+/Ubuntu 16.04+）</li>
+                    <li><strong>Redis版本</strong>: 5.0+ 或 6.0+</li>
+                    <li><strong>SSH服务</strong>: 已启用并允许远程连接</li>
+                    <li><strong>端口</strong>: Redis端口和集群总线端口（port + 10000）需开放</li>
+                </ul>
+            </section>
+
+            <!-- 快速开始 -->
+            <section id="quickstart">
+                <h2>🚀 快速开始</h2>
+                
+                <ol class="steps">
+                    <li>
+                        <h4>环境准备</h4>
+                        <p>确保已安装JDK和Maven：</p>
+                        <pre><code># 检查JDK版本
+java -version
+
+# 检查Maven版本
+mvn -version</code></pre>
+                    </li>
+                    <li>
+                        <h4>下载与编译</h4>
+                        <pre><code># 进入项目目录
+cd redis-cluster-manager
+
+# 编译打包（跳过测试加速构建）
+mvn clean package -DskipTests
+
+# 生成的jar包位于：target/redis-cluster-manager-DEV-1.0.0.jar</code></pre>
+                    </li>
+                    <li>
+                        <h4>启动应用</h4>
+                        <pre><code># 方式1：直接运行
+java -jar target/redis-cluster-manager-DEV-1.0.0.jar
+
+# 方式2：指定配置文件运行
+java -jar target/redis-cluster-manager-DEV-1.0.0.jar --spring.config.location=application.yml
+
+# 方式3：后台运行
+nohup java -jar target/redis-cluster-manager-DEV-1.0.0.jar > app.log 2>&1 &</code></pre>
+                    </li>
+                    <li>
+                        <h4>访问系统</h4>
+                        <p>打开浏览器访问：<code>http://localhost:8080</code></p>
+                        <p>默认登录账号：</p>
+                        <ul>
+                            <li>用户名：<code>admin</code></li>
+                            <li>密码：<code>admin</code></li>
+                        </ul>
+                        <blockquote class="warning">
+                            <strong>⚠️ 安全提示</strong>：生产环境请务必修改默认密码！
+                        </blockquote>
+                    </li>
+                </ol>
+            </section>
+
+            <!-- 使用指南 -->
+            <section id="guide">
+                <h2>📖 使用指南</h2>
+                
+                <h3 id="guide-template">一、初始化配置模板</h3>
+                <p>系统启动时会自动初始化Redis 5.x和6.x的默认配置模板。您也可以：</p>
+                <ol>
+                    <li>进入"配置模板"菜单</li>
+                    <li>点击"新建模板"创建自定义模板</li>
+                    <li>支持占位符：<code>${PORT}</code>, <code>${NODE_IP}</code>, <code>${DATA_DIR}</code>, <code>${MAX_MEMORY}</code>, <code>${REQUIREPASS}</code>等</li>
+                </ol>
+
+                <h3 id="guide-server">二、创建服务器组</h3>
+                <ol>
+                    <li>点击"服务器组"菜单 → "新建服务器组"</li>
+                    <li>填写基本信息：组名称（唯一）、描述（可选）</li>
+                    <li>配置服务器信息（3-6台）：IP地址、SSH端口、用户名/密码、Redis安装路径</li>
+                    <li>保存时自动验证SSH连接和Redis环境</li>
+                </ol>
+
+                <h3 id="guide-cluster">三、创建Redis集群</h3>
+                <ol>
+                    <li>进入"集群管理" → "创建集群"</li>
+                    <li>选择服务器组（必须已配置且验证通过）</li>
+                    <li>配置集群参数：
+                        <ul>
+                            <li>集群名称</li>
+                            <li>Redis版本（5.x或6.x）</li>
+                            <li>配置模板</li>
+                            <li>基础端口（如6379）</li>
+                            <li>集群密码（可选）</li>
+                            <li>数据目录（可选，默认/data/redis/{port}）</li>
+                        </ul>
+                    </li>
+                    <li>点击"预览配置"查看生成的redis.conf</li>
+                    <li>确认无误后点击"创建集群"</li>
+                    <li>等待异步创建完成（约30-60秒）</li>
+                </ol>
+
+                <h3 id="guide-import">四、导入现有集群</h3>
+                
+                <blockquote class="warning">
+                    <strong>⚠️ 导入前提条件</strong>
+                    <ol class="mb-0 mt-2">
+                        <li><strong>集群必须正常运行</strong> - 只有正常服务的集群才能获取集群结构信息</li>
+                        <li><strong>必须是3主3从架构</strong> - 且所有节点使用<strong>统一服务端口</strong></li>
+                    </ol>
+                </blockquote>
+                
+                <ol>
+                    <li>进入"集群管理" → "导入集群"</li>
+                    <li>确认待导入集群满足上述前提条件</li>
+                    <li>填写集群信息：
+                        <ul>
+                            <li>集群名称</li>
+                            <li>选择服务器组（集群所在的服务器组）</li>
+                            <li>端口号（集群的统一服务端口）</li>
+                            <li>密码（如有）</li>
+                        </ul>
+                    </li>
+                    <li>点击"开始检查"进行验证</li>
+                    <li>验证通过后，点击"确认导入"</li>
+                </ol>
+
+                <h3 id="guide-monitor">五、监控管理</h3>
+                <p>系统提供三层监控体系：</p>
+                
+                <h4>1. 物理机监控</h4>
+                <ul>
+                    <li>CPU使用率、内存使用率</li>
+                    <li>磁盘使用率和I/O</li>
+                    <li>网络流量、系统负载</li>
+                </ul>
+
+                <h4>2. 实例监控</h4>
+                <ul>
+                    <li>内存使用（used/max）</li>
+                    <li>连接数（connected/rejected）</li>
+                    <li>QPS（瞬时/累计）</li>
+                    <li>键值统计、慢查询统计</li>
+                </ul>
+
+                <h4>3. 集群级监控</h4>
+                <ul>
+                    <li>集群健康状态</li>
+                    <li>槽位分配情况</li>
+                    <li>主从复制状态</li>
+                    <li>节点间通信状态</li>
+                </ul>
+
+                <h3 id="guide-config">六、动态配置管理</h3>
+                <ol>
+                    <li>进入集群详情页</li>
+                    <li>点击"动态配置"选项卡</li>
+                    <li>选择配置项或手动输入参数名</li>
+                    <li>输入新值并应用（支持批量应用到整个集群）</li>
+                </ol>
+
+                <p>常用可动态修改的参数：</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>参数</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>maxmemory</code></td><td>最大内存限制</td></tr>
+                        <tr><td><code>maxmemory-policy</code></td><td>淘汰策略</td></tr>
+                        <tr><td><code>timeout</code></td><td>连接超时时间</td></tr>
+                        <tr><td><code>tcp-keepalive</code></td><td>TCP保活检测</td></tr>
+                        <tr><td><code>save</code></td><td>RDB持久化策略</td></tr>
+                    </tbody>
+                </table>
+
+                <h3 id="guide-data">七、数据浏览</h3>
+                <ol>
+                    <li>进入集群详情页</li>
+                    <li>点击"数据查询"选项卡</li>
+                    <li>输入Key模式（如<code>user:*</code>）</li>
+                    <li>点击Key查看详细Value</li>
+                    <li>支持String、Hash、List、Set、ZSet等类型</li>
+                </ol>
+            </section>
+
+            <!-- 配置说明 -->
+            <section id="configuration">
+                <h2>⚙️ 配置说明</h2>
+                
+                <h3>application.yml 完整配置</h3>
+                <pre><code>server:
+  port: 8080                          # Web服务端口
+  servlet:
+    context-path: /                   # 应用上下文路径
+
+spring:
+  application:
+    name: redis-cluster-manager
+  
+  # 数据源配置
+  datasource:
+    url: jdbc:h2:file:./data/redis-manager;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  
+  # JPA配置
+  jpa:
+    hibernate:
+      ddl-auto: update                # 自动更新表结构
+    show-sql: false
+  
+  # H2控制台（开发调试用）
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+  
+  # Thymeleaf配置
+  thymeleaf:
+    cache: false                      # 生产环境设为true
+
+# Redis Manager自定义配置
+redis:
+  manager:
+    remote-install-base: /opt/redis         # 远程安装基础路径
+    remote-data-base: /data/redis           # 远程数据目录
+    ssh-timeout: 30000                      # SSH连接超时（毫秒）
+    monitor-interval: 600000                # 监控采集间隔（毫秒）
+    supported-versions:                     # 支持的Redis版本
+      - redis-6.2.14
+      - redis-5.0.14
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.redis.manager: DEBUG
+  file:
+    name: logs/redis-manager.log</code></pre>
+
+                <h3>使用MySQL数据库</h3>
+                <p>修改 <code>application.yml</code>：</p>
+                <pre><code>spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/redis_manager?useSSL=false&serverTimezone=Asia/Shanghai
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: yourpassword
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect</code></pre>
+            </section>
+
+            <!-- API接口 -->
+            <section id="api">
+                <h2>🔌 API接口文档</h2>
+                
+                <h3>用户管理</h3>
+                <table>
+                    <thead>
+                        <tr><th>接口</th><th>方法</th><th>说明</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>/api/users/health</code></td><td>GET</td><td>健康检查</td></tr>
+                        <tr><td><code>/api/users/login</code></td><td>POST</td><td>用户登录</td></tr>
+                        <tr><td><code>/api/users/logout</code></td><td>POST</td><td>用户登出</td></tr>
+                        <tr><td><code>/api/users/current</code></td><td>GET</td><td>获取当前用户</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>服务器组管理</h3>
+                <table>
+                    <thead>
+                        <tr><th>接口</th><th>方法</th><th>说明</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>/api/groups</code></td><td>GET/POST</td><td>获取/创建服务器组</td></tr>
+                        <tr><td><code>/api/groups/{id}</code></td><td>GET/PUT/DELETE</td><td>服务器组详情/更新/删除</td></tr>
+                        <tr><td><code>/api/groups/available</code></td><td>GET</td><td>获取可用服务器组</td></tr>
+                        <tr><td><code>/api/groups/{id}/test-all</code></td><td>POST</td><td>测试所有服务器连接</td></tr>
+                        <tr><td><code>/api/groups/servers/{id}/system-info</code></td><td>GET</td><td>获取系统信息</td></tr>
+                        <tr><td><code>/api/groups/{id}/set-default</code></td><td>POST</td><td>设为默认组</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>集群管理</h3>
+                <table>
+                    <thead>
+                        <tr><th>接口</th><th>方法</th><th>说明</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>/api/clusters</code></td><td>GET/POST</td><td>获取/创建集群</td></tr>
+                        <tr><td><code>/api/clusters/{id}</code></td><td>GET/DELETE</td><td>集群详情/删除</td></tr>
+                        <tr><td><code>/api/clusters/{id}/start</code></td><td>POST</td><td>启动集群</td></tr>
+                        <tr><td><code>/api/clusters/{id}/stop</code></td><td>POST</td><td>停止集群</td></tr>
+                        <tr><td><code>/api/clusters/import</code></td><td>POST</td><td>导入集群</td></tr>
+                        <tr><td><code>/api/clusters/{id}/nodes</code></td><td>GET</td><td>获取节点信息</td></tr>
+                        <tr><td><code>/api/clusters/{id}/config</code></td><td>POST</td><td>更新集群参数</td></tr>
+                        <tr><td><code>/api/clusters/{id}/query-keys</code></td><td>GET</td><td>查询Key列表</td></tr>
+                        <tr><td><code>/api/clusters/{id}/progress</code></td><td>GET</td><td>获取创建进度</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>监控管理</h3>
+                <table>
+                    <thead>
+                        <tr><th>接口</th><th>方法</th><th>说明</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>/api/monitor/clusters</code></td><td>GET</td><td>获取所有集群状态</td></tr>
+                        <tr><td><code>/api/monitor/cluster/{id}</code></td><td>GET</td><td>集群监控概览</td></tr>
+                        <tr><td><code>/api/monitor/instance/{id}</code></td><td>GET</td><td>实例监控数据</td></tr>
+                        <tr><td><code>/api/monitor/physical</code></td><td>GET</td><td>物理机监控</td></tr>
+                        <tr><td><code>/api/monitor/instances</code></td><td>GET</td><td>实例级监控</td></tr>
+                        <tr><td><code>/api/monitor/cluster-level</code></td><td>GET</td><td>集群级监控</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- 项目结构 -->
+            <section id="structure">
+                <h2>📁 项目目录结构</h2>
+                <pre><code>redis-cluster-manager/
+├── src/
+│   └── main/
+│       ├── java/com/redis/manager/
+│       │   ├── RedisClusterManagerApplication.java
+│       │   ├── config/                 # 配置类
+│       │   ├── controller/             # 控制器层
+│       │   ├── dto/                    # 数据传输对象
+│       │   ├── entity/                 # 实体类
+│       │   ├── repository/             # 数据访问层
+│       │   ├── service/                # 业务逻辑层
+│       │   ├── ssh/                    # SSH工具
+│       │   └── util/                   # 工具类
+│       └── resources/
+│           ├── application.yml         # 应用配置
+│           ├── templates/              # Thymeleaf模板
+│           └── static/                 # 静态资源
+├── data/                               # H2数据库文件
+├── logs/                               # 日志文件
+├── pom.xml                             # Maven配置
+├── build.sh / build.bat                # 构建脚本
+└── README.md                           # 说明文档</code></pre>
+            </section>
+
+            <!-- 常见问题 -->
+            <section id="faq">
+                <h2>❓ 常见问题</h2>
+                
+                <h3>1. SSH连接失败</h3>
+                <p><strong>现象</strong>：服务器组保存时提示SSH连接失败</p>
+                <p><strong>排查步骤</strong>：</p>
+                <ol>
+                    <li>检查服务器IP、端口、用户名、密码是否正确</li>
+                    <li>确认目标服务器SSH服务已启动：<code>systemctl status sshd</code></li>
+                    <li>检查防火墙是否允许SSH端口：<code>iptables -L -n | grep 22</code></li>
+                    <li>查看应用日志获取详细错误信息</li>
+                </ol>
+
+                <h3>2. Redis命令执行失败</h3>
+                <p><strong>现象</strong>：提示redis-cli或redis-server不存在</p>
+                <p><strong>解决方案</strong>：</p>
+                <ol>
+                    <li>确认服务器已安装Redis</li>
+                    <li>检查"Redis安装路径"配置是否正确</li>
+                    <li>验证路径下是否存在redis-cli和redis-server</li>
+                </ol>
+
+                <h3>3. 集群创建失败</h3>
+                <p><strong>现象</strong>：集群创建过程中报错或卡住</p>
+                <p><strong>排查步骤</strong>：</p>
+                <ol>
+                    <li>检查端口是否被占用：<code>netstat -tlnp | grep {port}</code></li>
+                    <li>检查数据目录是否有写权限</li>
+                    <li>查看Redis日志：<code>tail -f /data/redis/{port}/redis.log</code></li>
+                    <li>确认所有节点时间同步</li>
+                </ol>
+
+                <h3>4. 无法监控集群</h3>
+                <p><strong>解决方案</strong>：</p>
+                <ol>
+                    <li>确认集群节点可以被访问（检查防火墙）</li>
+                    <li>检查Redis是否绑定了正确的IP地址</li>
+                    <li>确认<code>protected-mode</code>已关闭</li>
+                    <li>如有密码，确认密码配置正确</li>
+                </ol>
+            </section>
+
+            <!-- 安全建议 -->
+            <section id="security">
+                <h2>🔒 安全建议</h2>
+                
+                <h3>生产环境部署</h3>
+                <ol>
+                    <li><strong>修改默认密码</strong>：首次登录后立即修改admin密码</li>
+                    <li><strong>使用HTTPS</strong>：配置SSL证书，使用Nginx反向代理</li>
+                    <li><strong>限制访问</strong>：配置防火墙，仅允许管理IP访问</li>
+                    <li><strong>数据库安全</strong>：生产环境使用MySQL替代H2，定期备份</li>
+                    <li><strong>日志审计</strong>：启用操作日志记录，定期审查异常访问</li>
+                </ol>
+
+                <h3>Nginx反向代理配置示例</h3>
+                <pre><code>server {
+    listen 80;
+    server_name redis-manager.example.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name redis-manager.example.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</code></pre>
+            </section>
+
+            <!-- 开发计划 -->
+            <section id="roadmap">
+                <h2>🗺️ 开发计划</h2>
+                
+                <h3>已实现功能 ✅</h3>
+                <ul>
+                    <li>用户登录认证</li>
+                    <li>服务器组管理（3-6台服务器）</li>
+                    <li>SSH连接池管理</li>
+                    <li>Redis集群创建（3主3从）</li>
+                    <li>现有集群导入</li>
+                    <li>配置模板管理</li>
+                    <li>动态参数配置</li>
+                    <li>多维度监控</li>
+                    <li>数据浏览</li>
+                    <li>集群生命周期管理</li>
+                </ul>
+
+                <h3>计划功能 📋</h3>
+                <ul>
+                    <li>集群扩容/缩容</li>
+                    <li>槽位迁移管理</li>
+                    <li>自动故障转移告警</li>
+                    <li>慢查询分析</li>
+                    <li>大Key分析</li>
+                    <li>热Key统计</li>
+                    <li>操作审计日志</li>
+                    <li>多租户支持</li>
+                    <li>Swagger API文档</li>
+                    <li>集群备份与恢复</li>
+                </ul>
+            </section>
+        </div>
+
+        <!-- 页脚 -->
+        <footer class="footer">
+            <p><strong>Redis Cluster Manager - 让Redis集群管理更简单</strong></p>
+            <p>Made with <span class="heart">❤️</span> by Redis Cluster Manager Team</p>
+            <p>MIT License</p>
+        </footer>
+    </main>
+
+    <!-- 回到顶部按钮 -->
+    <button class="back-to-top" onclick="scrollToTop()" id="backToTop">↑</button>
+
+    <script>
+        // 切换侧边栏（移动端）
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+
+        // 回到顶部
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // 显示/隐藏回到顶部按钮
+        window.onscroll = function() {
+            const btn = document.getElementById('backToTop');
+            if (document.body.scrollTop > 300 || document.documentElement.scrollTop > 300) {
+                btn.style.display = 'flex';
+            } else {
+                btn.style.display = 'none';
+            }
+            
+            // 高亮当前章节
+            highlightCurrentSection();
+        };
+
+        // 高亮当前章节
+        function highlightCurrentSection() {
+            const sections = document.querySelectorAll('section[id]');
+            const navLinks = document.querySelectorAll('.nav-menu a');
+            
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.scrollY >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        }
+
+        // 搜索功能
+        function searchContent() {
+            const input = document.getElementById('searchInput');
+            const filter = input.value.toLowerCase();
+            const navMenu = document.getElementById('navMenu');
+            const links = navMenu.getElementsByTagName('a');
+
+            for (let i = 0; i < links.length; i++) {
+                const txtValue = links[i].textContent || links[i].innerText;
+                if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                    links[i].style.display = '';
+                } else {
+                    links[i].style.display = 'none';
+                }
+            }
+        }
+
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    // 移动端关闭侧边栏
+                    document.getElementById('sidebar').classList.remove('open');
+                }
+            });
+        });
+
+        // 代码复制功能
+        document.querySelectorAll('pre').forEach(pre => {
+            const button = document.createElement('button');
+            button.textContent = '复制';
+            button.style.cssText = `
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                padding: 5px 12px;
+                background: rgba(255,255,255,0.2);
+                color: #fff;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                opacity: 0;
+                transition: opacity 0.2s;
+            `;
+            pre.style.position = 'relative';
+            pre.appendChild(button);
+
+            pre.addEventListener('mouseenter', () => button.style.opacity = '1');
+            pre.addEventListener('mouseleave', () => button.style.opacity = '0');
+
+            button.addEventListener('click', () => {
+                const code = pre.querySelector('code') || pre;
+                navigator.clipboard.writeText(code.textContent).then(() => {
+                    button.textContent = '已复制!';
+                    setTimeout(() => button.textContent = '复制', 2000);
+                });
+            });
+        });
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            highlightCurrentSection();
+        });
+    </script>
+</body>
+</html>

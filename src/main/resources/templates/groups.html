@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('服务器组管理')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('服务器组管理')"></header>
+        
+        <div class="content-container">
+            <!-- Action Bar -->
+            <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+                <a href="/groups/new" class="btn btn-primary ms-auto">
+                    <i class="bi bi-plus-lg"></i> 新建服务器组
+                </a>
+            </div>
+
+            <!-- Groups List -->
+            <div class="card animate-fade-in">
+                <div class="list-group list-group-flush" id="groupsContainer">
+                    <!-- 动态加载 -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Test Connection Modal -->
+    <div class="modal fade" id="testModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-wifi"></i> 连接测试</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="testResults">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">正在测试连接...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Server System Info Modal - 大尺寸模态框 -->
+    <div class="modal fade" id="systemInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-xl" style="max-width: 900px;">
+            <div class="modal-content" style="max-height: 80vh;">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="bi bi-cpu"></i> 服务器系统信息</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body bg-light" style="overflow-y: auto;">
+                    <div id="systemInfoContent">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 text-muted">正在获取系统信息...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-groups');
+
+        // 加载服务器组
+        async function loadGroups() {
+            try {
+                const response = await axios.get('/api/groups');
+                if (response.data.code === 200) {
+                    renderGroups(response.data.data);
+                }
+            } catch (error) {
+                showToast('加载数据失败', 'error');
+            }
+        }
+
+        // 渲染服务器组
+        function renderGroups(groups) {
+            const container = document.getElementById('groupsContainer');
+            
+            // 按ID去重（防止后端返回重复数据）
+            const uniqueGroups = [];
+            const seenIds = new Set();
+            for (const group of groups) {
+                if (!seenIds.has(group.id)) {
+                    seenIds.add(group.id);
+                    uniqueGroups.push(group);
+                }
+            }
+            groups = uniqueGroups;
+
+            if (groups.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state py-5">
+                        <div class="empty-state-icon">
+                            <i class="bi bi-hdd-rack"></i>
+                        </div>
+                        <h4>暂无服务器组</h4>
+                        <p class="text-muted mb-4">创建服务器组开始管理Redis集群</p>
+                        <a href="/groups/new" class="btn btn-primary">
+                            <i class="bi bi-plus-lg"></i> 创建服务器组
+                        </a>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = groups.map((group, index) => {
+                const serverCount = group.servers ? group.servers.length : 0;
+                const serversComplete = serverCount >= 2;
+                const groupId = `group-${group.id}`;
+                
+                return `
+                    <div class="list-group-item p-0" style="animation: fadeIn 0.3s ease-out ${index * 0.05}s both;">
+                        <!-- 组名行（可点击展开） -->
+                        <div class="d-flex align-items-center p-3 cursor-pointer hover-bg-light" 
+                             data-bs-toggle="collapse" data-bs-target="#${groupId}" 
+                             style="cursor: pointer; transition: background-color 0.2s;"
+                             onmouseover="this.style.backgroundColor='#f8f9fa'" 
+                             onmouseout="this.style.backgroundColor=''">
+                            <i class="bi bi-chevron-right me-2 text-muted" id="icon-${group.id}" style="transition: transform 0.2s;"></i>
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-hdd-rack text-primary"></i>
+                                    <span class="fw-semibold">${group.name}</span>
+                                    ${group.isDefault === 1 ? `<span class="badge bg-warning" title="首页默认展示"><i class="bi bi-star-fill me-1"></i>默认</span>` : ''}
+                                    <span class="badge ${serversComplete ? 'bg-success' : 'bg-warning'}">
+                                        ${serverCount}台
+                                    </span>
+                                    ${group.clusterCount ? `<span class="badge bg-info"><i class="bi bi-diagram-3 me-1"></i>${group.clusterCount} 个集群</span>` : ''}
+                                </div>
+                                <small class="text-muted ms-4">${group.description || '无描述'}</small>
+                            </div>
+                            <div class="d-flex align-items-center gap-3">
+                                <small class="text-muted">
+                                    <i class="bi bi-clock"></i> ${group.createTime || '-'}
+                                </small>
+                                <div class="d-flex gap-1">
+                                    ${group.isDefault !== 1 ? `
+                                        <button class="btn btn-sm btn-outline-warning" onclick="event.stopPropagation(); setDefaultGroup(${group.id})" title="设为首页默认">
+                                            <i class="bi bi-star"></i>
+                                        </button>
+                                    ` : `
+                                        <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); cancelDefaultGroup(${group.id})" title="取消默认">
+                                            <i class="bi bi-star-fill"></i>
+                                        </button>
+                                    `}
+                                    <a href="/groups/edit/${group.id}" class="btn btn-sm btn-light" title="编辑" onclick="event.stopPropagation();">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteGroup(${group.id})" title="删除">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 服务器列表（展开内容） -->
+                        <div class="collapse border-top" id="${groupId}" data-group-id="${group.id}">
+                            <div class="p-3 bg-light">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <small class="text-muted fw-medium">服务器列表</small>
+                                    <span class="badge bg-primary">${serverCount} 台服务器</span>
+                                </div>
+                                ${group.servers && group.servers.length > 0 ? `
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered bg-white mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th style="width: 60px;">序号</th>
+                                                    <th>IP地址</th>
+                                                    <th>描述</th>
+                                                    <th style="width: 80px;">SSH端口</th>
+                                                    <th style="width: 100px;">SSH用户</th>
+                                                    <th style="width: 120px;">服务器密码</th>
+                                                    <th style="width: 100px;">Redis版本</th>
+                                                    <th>Redis路径</th>
+                                                    <th style="width: 120px;">系统信息</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${group.servers.map((server, i) => `
+                                                    <tr>
+                                                        <td class="text-center">
+                                                            <span class="badge bg-secondary">${i + 1}</span>
+                                                        </td>
+                                                        <td><code>${server.ip || '-'}</code></td>
+                                                        <td><span class="text-muted small">${server.description || '-'}</span></td>
+                                                        <td>${server.sshPort || 22}</td>
+                                                        <td>${server.sshUser || '-'}</td>
+                                                        <td>
+                                                            <div class="d-flex align-items-center gap-1">
+                                                                <code class="small text-truncate" style="max-width: 80px;" id="pwd-text-${server.id}">***</code>
+                                                                <button class="btn btn-link btn-sm p-0 text-primary" id="pwd-btn-${server.id}" 
+                                                                        data-password="${server.sshPassword ? server.sshPassword.replace(/"/g, '&quot;') : ''}" 
+                                                                        onclick="toggleServerPassword(${server.id})" title="查看密码">
+                                                                    <i class="bi bi-eye"></i>
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            ${server.redisVersion ? 
+                                                                `<span class="badge bg-info">Redis ${server.redisVersion}</span>` : 
+                                                                '<span class="badge bg-light text-muted">未检测</span>'}
+                                                        </td>
+                                                        <td><code class="small">${server.redisPath || '/usr/local/bin'}</code></td>
+                                                        <td>
+                                                            <button class="btn btn-sm btn-outline-info" onclick="showServerSystemInfo(${server.id})" title="查看系统信息">
+                                                                <i class="bi bi-cpu"></i> 查询
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                `).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ` : `
+                                    <div class="text-center py-3 text-muted">
+                                        <i class="bi bi-inbox"></i> 未配置服务器
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // 添加展开/收起事件监听，旋转箭头图标
+            container.querySelectorAll('.collapse').forEach(collapse => {
+                collapse.addEventListener('show.bs.collapse', function() {
+                    const groupId = this.id.split('-')[1];
+                    const icon = document.getElementById(`icon-${groupId}`);
+                    if (icon) icon.style.transform = 'rotate(90deg)';
+                });
+                collapse.addEventListener('hide.bs.collapse', function() {
+                    const groupId = this.id.split('-')[1];
+                    const icon = document.getElementById(`icon-${groupId}`);
+                    if (icon) icon.style.transform = 'rotate(0deg)';
+                });
+            });
+        }
+
+        // 删除服务器组
+        async function deleteGroup(id) {
+            confirmAction('确定要删除这个服务器组吗？删除后无法恢复。', async () => {
+                try {
+                    const response = await axios.delete(`/api/groups/${id}`);
+                    if (response.data.code === 200) {
+                        showToast('删除成功', 'success');
+                        loadGroups();
+                    } else {
+                        showToast(response.data.message, 'error');
+                    }
+                } catch (error) {
+                    showToast('删除失败', 'error');
+                }
+            });
+        }
+
+        // 设置默认服务器组
+        async function setDefaultGroup(id) {
+            try {
+                const response = await axios.post(`/api/groups/${id}/set-default`);
+                if (response.data.code === 200) {
+                    showToast('已设为首页默认服务器组', 'success');
+                    loadGroups();
+                } else {
+                    showToast(response.data.message, 'error');
+                }
+            } catch (error) {
+                showToast('设置失败', 'error');
+            }
+        }
+
+        // 取消默认服务器组
+        async function cancelDefaultGroup(id) {
+            try {
+                const response = await axios.post(`/api/groups/${id}/cancel-default`);
+                if (response.data.code === 200) {
+                    showToast('已取消默认设置', 'success');
+                    loadGroups();
+                } else {
+                    showToast(response.data.message, 'error');
+                }
+            } catch (error) {
+                showToast('取消失败', 'error');
+            }
+        }
+
+        // 测试连接
+        async function testConnection(groupId) {
+            const modal = new bootstrap.Modal(document.getElementById('testModal'));
+            modal.show();
+            
+            document.getElementById('testResults').innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2 text-muted">正在测试连接...</p>
+                </div>
+            `;
+
+            try {
+                const response = await axios.post(`/api/groups/${groupId}/test-all`);
+                if (response.data.code === 200) {
+                    const results = response.data.data;
+                    const html = results.map(r => {
+                        const isOnline = r.includes('在线');
+                        const parts = r.split(':');
+                        const info = parts[0].trim();
+                        const status = parts[1] ? parts[1].trim() : '';
+                        
+                        return `
+                            <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded ${isOnline ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10'}" style="animation: fadeIn 0.3s ease-out;">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi ${isOnline ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}" style="font-size: 1.25rem;"></i>
+                                    <div>
+                                        <div class="fw-medium">${info}</div>
+                                        <small class="text-muted">${status}</small>
+                                    </div>
+                                </div>
+                                <span class="badge ${isOnline ? 'bg-success' : 'bg-danger'}">${status}</span>
+                            </div>
+                        `;
+                    }).join('');
+                    document.getElementById('testResults').innerHTML = html;
+                }
+            } catch (error) {
+                document.getElementById('testResults').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> 测试失败: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 显示服务器系统信息
+        async function showServerSystemInfo(serverId) {
+            const modal = new bootstrap.Modal(document.getElementById('systemInfoModal'));
+            modal.show();
+            
+            document.getElementById('systemInfoContent').innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+                    <p class="mt-3 text-muted">正在获取系统信息...</p>
+                </div>
+            `;
+
+            try {
+                const response = await axios.get(`/api/groups/servers/${serverId}/system-info`);
+                if (response.data.code === 200) {
+                    const info = response.data.data;
+                    const cpuUsageNum = parseFloat(info.cpuUsage) || 0;
+                    const memUsageNum = parseFloat(info.memoryUsage) || 0;
+                    
+                    // 生成磁盘信息表格
+                    let diskTableHtml = '';
+                    if (info.diskList && info.diskList.length > 0) {
+                        diskTableHtml = `
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 25%">文件系统</th>
+                                        <th style="width: 10%">容量</th>
+                                        <th style="width: 10%">已用</th>
+                                        <th style="width: 10%">可用</th>
+                                        <th style="width: 15%">使用率</th>
+                                        <th style="width: 30%">挂载点</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${info.diskList.map(disk => {
+                                        const usageNum = parseInt(disk.usePercent) || 0;
+                                        return `
+                                            <tr>
+                                                <td class="small" title="${disk.filesystem}">
+                                                    <code class="text-truncate d-inline-block" style="max-width: 200px;">${disk.filesystem}</code>
+                                                </td>
+                                                <td class="fw-medium">${disk.size}</td>
+                                                <td class="text-danger">${disk.used}</td>
+                                                <td class="text-success">${disk.available}</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="progress flex-grow-1" style="height: 6px; min-width: 60px;">
+                                                            <div class="progress-bar ${usageNum > 80 ? 'bg-danger' : usageNum > 50 ? 'bg-warning' : 'bg-success'}" 
+                                                                 style="width: ${usageNum}%"></div>
+                                                        </div>
+                                                        <span class="small ${usageNum > 80 ? 'text-danger fw-bold' : ''}" style="min-width: 40px;">${disk.usePercent}</span>
+                                                    </div>
+                                                </td>
+                                                <td class="small"><code>${disk.mountedOn}</code></td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        `;
+                    } else {
+                        diskTableHtml = '<div class="text-center py-3 text-muted">暂无磁盘信息</div>';
+                    }
+                    
+                    document.getElementById('systemInfoContent').innerHTML = `
+                        <div class="container-fluid">
+                            <!-- 连接状态栏 -->
+                            <div class="alert ${info.connected ? 'alert-success' : 'alert-danger'} mb-4">
+                                <div class="d-flex align-items-center">
+                                    <i class="bi ${info.connected ? 'bi-check-circle-fill' : 'bi-x-circle-fill'} fs-4 me-3"></i>
+                                    <div>
+                                        <div class="fw-bold fs-5">${info.ip || '未知IP'}</div>
+                                        <div class="small">${info.connected ? '连接正常' : '连接失败'}</div>
+                                    </div>
+                                    ${info.errorMessage ? `<div class="ms-auto text-danger"><i class="bi bi-exclamation-triangle"></i> ${info.errorMessage}</div>` : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- 第一行：CPU + 内存 -->
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="card h-100 shadow-sm">
+                                        <div class="card-header bg-primary text-white">
+                                            <i class="bi bi-cpu me-2"></i>CPU 信息
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col-12 mb-3">
+                                                    <small class="text-muted d-block mb-1">CPU 型号</small>
+                                                    <div class="fw-medium">${info.cpuModel || '未知'}</div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <small class="text-muted d-block mb-1">核心数</small>
+                                                    <div class="fs-4 fw-bold text-primary">${info.cpuCores || '-'}</div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <small class="text-muted d-block mb-1">CPU 使用率</small>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="progress flex-grow-1" style="height: 10px;">
+                                                            <div class="progress-bar ${cpuUsageNum > 80 ? 'bg-danger' : cpuUsageNum > 50 ? 'bg-warning' : 'bg-success'}" 
+                                                                 style="width: ${cpuUsageNum}%"></div>
+                                                        </div>
+                                                        <span class="fw-bold ${cpuUsageNum > 80 ? 'text-danger' : ''}">${info.cpuUsage || '0%'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="mt-3 pt-2 border-top">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-info-circle me-1"></i>
+                                                    统计说明：通过 <code>cat /proc/cpuinfo</code> 获取CPU型号和核心数，通过 <code>top -bn1</code> 获取实时CPU使用率
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card h-100 shadow-sm">
+                                        <div class="card-header bg-success text-white">
+                                            <i class="bi bi-memory me-2"></i>内存信息
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col-12 mb-3">
+                                                    <small class="text-muted d-block mb-1">总内存</small>
+                                                    <div class="fs-4 fw-bold text-success">${info.totalMemory || '未知'}</div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <small class="text-muted d-block mb-1">已用 / 可用</small>
+                                                    <div class="fw-medium">
+                                                        <span class="text-danger">${info.usedMemory || '0'}</span>
+                                                        <span class="text-muted mx-1">/</span>
+                                                        <span class="text-success">${info.freeMemory || '0'}</span>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <small class="text-muted d-block mb-1">内存使用率</small>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="progress flex-grow-1" style="height: 10px;">
+                                                            <div class="progress-bar ${memUsageNum > 80 ? 'bg-danger' : memUsageNum > 50 ? 'bg-warning' : 'bg-success'}" 
+                                                                 style="width: ${memUsageNum}%"></div>
+                                                        </div>
+                                                        <span class="fw-bold ${memUsageNum > 80 ? 'text-danger' : ''}">${info.memoryUsage || '0%'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="mt-3 pt-2 border-top">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-info-circle me-1"></i>
+                                                    统计说明：通过 <code>free -m</code> 获取物理内存信息，已用内存 = 总内存 - 缓冲区/缓存 - 真正可用
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 第二行：磁盘信息（全宽表格） -->
+                            <div class="card shadow-sm mb-4">
+                                <div class="card-header bg-warning text-dark">
+                                    <i class="bi bi-hdd me-2"></i>磁盘信息 (df -h)
+                                    <span class="badge bg-dark ms-2">${info.diskList ? info.diskList.length : 0} 个分区</span>
+                                </div>
+                                <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                                    ${diskTableHtml}
+                                </div>
+                            </div>
+                            
+                            <!-- 第三行：操作系统信息 -->
+                            <div class="card shadow-sm">
+                                <div class="card-header bg-info text-white">
+                                    <i class="bi bi-display me-2"></i>操作系统
+                                </div>
+                                <div class="card-body">
+                                    <div class="fs-5">${info.osName || '未知'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('systemInfoContent').innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> ${response.data.message || '获取失败'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('systemInfoContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-x-circle"></i> 获取系统信息失败: ${error.response?.data?.message || error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 切换服务器密码显示/隐藏
+        function toggleServerPassword(serverId) {
+            const pwdText = document.getElementById(`pwd-text-${serverId}`);
+            const pwdBtn = document.getElementById(`pwd-btn-${serverId}`);
+            const pwdIcon = pwdBtn.querySelector('i');
+            const actualPassword = pwdBtn.dataset.password;
+            
+            if (pwdText.textContent === '***') {
+                // 显示明文密码
+                pwdText.textContent = actualPassword || '无密码';
+                pwdIcon.className = 'bi bi-eye-slash';
+                pwdBtn.title = '隐藏密码';
+            } else {
+                // 隐藏密码
+                pwdText.textContent = '***';
+                pwdIcon.className = 'bi bi-eye';
+                pwdBtn.title = '查看密码';
+            }
+        }
+
+        // HTML转义函数
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // 初始化
+        loadGroups();
+    </script>
+</body>
+</html>

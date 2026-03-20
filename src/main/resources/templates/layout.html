@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title th:text="${title} + ' - ' + (${sysConfig != null && sysConfig.name != null} ? ${sysConfig.name} : '缓存3×3英雄')">缓存3×3英雄</title>
+    <link rel="icon" type="image/png" th:href="${sysConfig != null && sysConfig.icon != null} ? ${sysConfig.icon} : '/Redis.png'">
+    
+    <!-- Bootstrap 5 -->
+    <link href="/vendor/bootstrap/css/bootstrap.min.css?v=2" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="/vendor/bootstrap-icons/bootstrap-icons.css?v=2" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="/vendor/chart.js/chart.min.js?v=2"></script>
+    <!-- Axios -->
+    <script src="/vendor/axios/axios.min.js?v=2"></script>
+    
+    <style>
+        :root {
+            --primary: #dc382c;
+            --logo-size: 36px;
+            --primary-dark: #a41e11;
+            --primary-light: #ff6b5a;
+            --secondary: #6366f1;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --dark: #1f2937;
+            --light: #f3f4f6;
+            --gray: #6b7280;
+            --sidebar-width: 260px;
+            --header-height: 64px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+            min-height: 100vh;
+            color: var(--dark);
+            line-height: 1.5;
+            font-size: 0.875rem;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: linear-gradient(180deg, var(--dark) 0%, #111827 100%);
+            z-index: 1000;
+            transition: var(--transition);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .sidebar-header {
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .brand-logo {
+            width: var(--logo-size);
+            height: var(--logo-size);
+            object-fit: contain;
+            border-radius: 8px;
+            background: white;
+            padding: 4px;
+        }
+        
+        .sidebar-brand i {
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+
+        .sidebar-nav {
+            padding: 20px 16px;
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-section-title {
+            color: var(--gray);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0 12px;
+            margin-bottom: 8px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+            font-weight: 500;
+            margin-bottom: 4px;
+            font-size: 0.875rem;
+        }
+
+        .nav-link:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        .nav-link.active {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(220, 56, 44, 0.4);
+        }
+
+        .nav-link i {
+            font-size: 1.1rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            transition: var(--transition);
+        }
+
+        /* Top Header */
+        .top-header {
+            height: var(--header-height);
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .page-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .page-title i {
+            color: var(--primary);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Content Container */
+        .content-container {
+            padding: 24px;
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            border: none;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+            overflow: hidden;
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .card-header {
+            background: transparent;
+            border-bottom: 1px solid var(--light);
+            padding: 16px 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .card-header h5, .card-header h6 {
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .card-body {
+            padding: 20px;
+        }
+
+        /* Stats Cards */
+        .stat-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+        }
+
+        .stat-card.primary::before { background: var(--primary); }
+        .stat-card.success::before { background: var(--success); }
+        .stat-card.warning::before { background: var(--warning); }
+        .stat-card.info::before { background: var(--info); }
+        .stat-card.danger::before { background: var(--danger); }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--gray);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--dark);
+            margin: 8px 0;
+        }
+
+        .stat-change {
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .stat-change.positive { color: var(--success); }
+        .stat-change.negative { color: var(--danger); }
+
+        /* Buttons */
+        .btn {
+            font-weight: 500;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(220, 56, 44, 0.4);
+        }
+
+        .btn-outline-primary {
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-outline-primary:hover {
+            background: var(--primary);
+        }
+
+        .btn-lg {
+            padding: 12px 24px;
+            font-size: 0.9375rem;
+        }
+
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 0.875rem;
+        }
+
+        /* Tables */
+        .table-container {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .table {
+            margin: 0;
+        }
+
+        .table thead th {
+            background: var(--light);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+            color: var(--gray);
+            border: none;
+            padding: 14px;
+        }
+
+        .table tbody td {
+            padding: 14px;
+            border-color: var(--light);
+            vertical-align: middle;
+        }
+
+        .table tbody tr:hover {
+            background: rgba(220, 56, 44, 0.02);
+        }
+
+        /* Badges */
+        .badge {
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+        }
+
+        .badge.bg-success { background: rgba(16, 185, 129, 0.1) !important; color: var(--success); }
+        .badge.bg-danger { background: rgba(239, 68, 68, 0.1) !important; color: var(--danger); }
+        .badge.bg-warning { background: rgba(245, 158, 11, 0.1) !important; color: var(--warning); }
+        .badge.bg-info { background: rgba(59, 130, 246, 0.1) !important; color: var(--info); }
+        .badge.bg-secondary { background: rgba(107, 114, 128, 0.1) !important; color: var(--gray); }
+
+        /* Forms */
+        .form-control, .form-select {
+            border: 2px solid #e5e7eb;
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            font-size: 0.875rem;
+            transition: var(--transition);
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(220, 56, 44, 0.1);
+        }
+
+        .form-label {
+            font-weight: 500;
+            color: var(--dark);
+            margin-bottom: 8px;
+        }
+
+        /* Progress */
+        .progress {
+            height: 8px;
+            background: var(--light);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+            border-radius: 4px;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 90px;
+            right: 32px;
+            z-index: 9999;
+        }
+
+        .toast {
+            background: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-lg);
+            padding: 16px 20px;
+            min-width: 300px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .toast.warning { border-left: 4px solid var(--warning); }
+        .toast.info { border-left: 4px solid var(--info); }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .empty-state-icon {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, var(--light) 0%, white 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            font-size: 3rem;
+            color: var(--primary);
+        }
+
+        .empty-state h4 {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            color: var(--gray);
+        }
+
+        /* Modals */
+        .modal-content {
+            border: none;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .modal-header {
+            border-bottom: 1px solid var(--light);
+            padding: 16px 20px;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            border-top: 1px solid var(--light);
+            padding: 16px 20px;
+        }
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+        }
+
+        /* Code blocks */
+        code {
+            background: var(--light);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            color: var(--primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Status indicators */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-dot.online { background: var(--success); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+        .status-dot.offline { background: var(--danger); box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
+        .status-dot.warning { background: var(--warning); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2); }
+
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar" th:fragment="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">
+                <img th:src="${sysConfig != null && sysConfig.logo != null} ? ${sysConfig.logo} : '/Redis.png'" 
+                     th:alt="${sysConfig != null && sysConfig.name != null} ? ${sysConfig.name} : '缓存3×3英雄'" 
+                     class="brand-logo">
+                <span th:text="${sysConfig != null && sysConfig.name != null} ? ${sysConfig.name} : '缓存3×3英雄'">缓存3×3英雄</span>
+            </a>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">概览</div>
+                <a href="/" class="nav-link" id="nav-home">
+                    <i class="bi bi-house-door"></i>
+                    <span>首页</span>
+                </a>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-section-title">管理</div>
+                <a href="/groups" class="nav-link" id="nav-groups">
+                    <i class="bi bi-hdd-rack"></i>
+                    <span>服务器组</span>
+                </a>
+                <a href="/config/templates" class="nav-link" id="nav-config">
+                    <i class="bi bi-sliders2"></i>
+                    <span>配置模板</span>
+                </a>
+                <a href="/clusters" class="nav-link" id="nav-clusters">
+                    <i class="bi bi-grid-3x3-gap"></i>
+                    <span>集群管理</span>
+                </a>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-section-title">运维</div>
+                <a href="/monitor/physical" class="nav-link" id="nav-monitor-physical">
+                    <i class="bi bi-hdd-rack"></i>
+                    <span>物理机监控</span>
+                </a>
+                <a href="/monitor/cluster" class="nav-link" id="nav-monitor-cluster">
+                    <i class="bi bi-grid-3x3-gap"></i>
+                    <span>集群监控</span>
+                </a>
+            </div>
+
+            <div class="nav-section" id="systemConfigSection" style="display: none;">
+                <div class="nav-section-title">系统</div>
+                <a href="/system/config" class="nav-link" id="nav-system-config">
+                    <i class="bi bi-gear"></i>
+                    <span>系统配置</span>
+                </a>
+                <a href="/backup" class="nav-link" id="nav-backup">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <span>数据备份</span>
+                </a>
+            </div>
+
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Header -->
+        <header class="top-header" th:fragment="header(title)">
+            <h1 class="page-title">
+                <i class="bi bi-circle-fill" style="font-size: 0.5rem;"></i>
+                <span th:text="${title}">页面标题</span>
+            </h1>
+            <div class="header-actions">
+                <!-- 用户信息 -->
+                <div class="dropdown">
+                    <button class="btn btn-light dropdown-toggle d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-person-circle"></i>
+                        <span id="currentUsername">用户</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" onclick="showChangePasswordModal(); return false;"><i class="bi bi-key me-2"></i>修改密码</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="logout(); return false;"><i class="bi bi-box-arrow-left me-2"></i>注销登录</a></li>
+                    </ul>
+                </div>
+                <button class="btn btn-light" onclick="location.reload()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Content -->
+        <div class="content-container" th:fragment="content">
+            <!-- 页面内容 -->
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts Fragment -->
+    <th:block th:fragment="scripts">
+        <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+        
+        <script>
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icons = {
+                success: 'bi-check-circle-fill',
+                error: 'bi-x-circle-fill',
+                warning: 'bi-exclamation-triangle-fill',
+                info: 'bi-info-circle-fill'
+            };
+            
+            const colors = {
+                success: '#10b981',
+                error: '#ef4444',
+                warning: '#f59e0b',
+                info: '#3b82f6'
+            };
+            
+            toast.innerHTML = `
+                <i class="bi ${icons[type]}" style="color: ${colors[type]}; font-size: 1.25rem;"></i>
+                <span style="flex: 1;">${message}</span>
+                <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // Set active nav
+        function setActiveNav(id) {
+            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+            const nav = document.getElementById(id);
+            if (nav) nav.classList.add('active');
+        }
+
+        // 加载当前用户信息
+        async function loadCurrentUserInfo() {
+            try {
+                const response = await axios.get('/api/users/current');
+                if (response.data.code === 200) {
+                    const user = response.data.data;
+                    document.getElementById('currentUsername').textContent = user.nickname || user.username;
+                    
+                    // 管理员显示系统配置菜单
+                    if (user.isAdmin) {
+                        const systemConfigSection = document.getElementById('systemConfigSection');
+                        if (systemConfigSection) {
+                            systemConfigSection.style.display = 'block';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('获取当前用户信息失败:', error);
+            }
+        }
+
+        // 加载系统配置
+        async function loadSystemConfig() {
+            try {
+                const response = await axios.get('/api/system/config/display');
+                if (response.data.code === 200) {
+                    const config = response.data.data;
+                    // 更新页面标题
+                    if (config.name) {
+                        const titleEl = document.querySelector('title');
+                        if (titleEl) {
+                            const currentTitle = titleEl.textContent;
+                            const prefix = currentTitle.split(' - ')[0];
+                            titleEl.textContent = prefix + ' - ' + config.name;
+                        }
+                    }
+                    // 更新 Favicon
+                    if (config.icon) {
+                        const faviconEl = document.querySelector('link[rel="icon"]');
+                        if (faviconEl) {
+                            faviconEl.href = config.icon;
+                        }
+                    }
+                    // 更新 Logo
+                    if (config.logo) {
+                        const logoEl = document.querySelector('.brand-logo');
+                        if (logoEl) {
+                            logoEl.src = config.logo;
+                        }
+                    }
+                    // 更新系统名称
+                    if (config.name) {
+                        const nameEl = document.querySelector('.sidebar-brand span');
+                        if (nameEl) {
+                            nameEl.textContent = config.name;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('加载系统配置失败:', error);
+            }
+        }
+
+        // 注销登录
+        function logout() {
+            confirmAction('确定要注销登录吗？', async function() {
+                try {
+                    await axios.post('/api/users/logout');
+                    window.location.href = '/login';
+                } catch (error) {
+                    showToast('注销失败', 'error');
+                }
+            }, '<i class="bi bi-box-arrow-left text-danger"></i> 注销登录', '确认注销', 'btn-danger');
+        }
+
+        // 页面加载时获取用户信息和系统配置
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCurrentUserInfo();
+            loadSystemConfig();
+        });
+
+        // Format bytes
+        function formatBytes(bytes) {
+            if (bytes === 0 || !bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Format number
+        function formatNumber(num) {
+            if (!num) return '0';
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        // 自定义确认对话框 - 替代原生 confirm
+        let confirmCallback = null;
+        let confirmModalInstance = null;
+        
+        /**
+         * 显示自定义确认对话框
+         * @param {string} message - 显示消息（支持HTML）
+         * @param {Function} callback - 点击确认后的回调函数
+         * @param {string} title - 标题（可选，默认"确认操作"）
+         * @param {string} confirmText - 确认按钮文字（可选，默认"确认"）
+         * @param {string} confirmClass - 确认按钮样式（可选，默认"btn-primary"）
+         */
+        function confirmAction(message, callback, title, confirmText, confirmClass) {
+            confirmCallback = callback;
+            const confirmModal = document.getElementById('confirmModal');
+            if (!confirmModal) {
+                console.error('confirmModal 不存在，使用原生 confirm');
+                if (confirm(message)) {
+                    callback();
+                }
+                return;
+            }
+            
+            // 设置标题
+            const titleEl = document.getElementById('confirmModalTitle');
+            if (title) {
+                titleEl.innerHTML = title;
+            } else {
+                titleEl.innerHTML = '<i class="bi bi-question-circle text-warning"></i> 确认操作';
+            }
+            
+            // 设置消息内容
+            document.getElementById('confirmModalMessage').innerHTML = message;
+            
+            // 设置确认按钮
+            const confirmBtn = document.getElementById('confirmModalBtn');
+            confirmBtn.textContent = confirmText || '确认';
+            confirmBtn.className = 'btn ' + (confirmClass || 'btn-primary');
+            
+            // 显示弹窗
+            confirmModalInstance = new bootstrap.Modal(confirmModal);
+            confirmModalInstance.show();
+        }
+        
+        /**
+         * 简化版确认对话框（仅文本）
+         */
+        function showConfirm(message, callback, options) {
+            options = options || {};
+            confirmAction(
+                message,
+                callback,
+                options.title,
+                options.confirmText,
+                options.confirmClass
+            );
+        }
+        
+        // 使用事件委托处理确认对话框按钮点击
+        document.addEventListener('click', function(e) {
+            // 确认按钮
+            if (e.target && e.target.id === 'confirmModalBtn') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (confirmCallback) {
+                    const cb = confirmCallback;
+                    confirmCallback = null;
+                    cb();
+                }
+                if (confirmModalInstance) {
+                    confirmModalInstance.hide();
+                    confirmModalInstance = null;
+                }
+            }
+            // 取消按钮
+            if (e.target && (e.target.id === 'confirmCancelBtn' || e.target.closest('#confirmCancelBtn'))) {
+                confirmCallback = null;
+                if (confirmModalInstance) {
+                    confirmModalInstance.hide();
+                    confirmModalInstance = null;
+                }
+            }
+        });
+    </script>
+    
+    <!-- Confirm Modal - 放在scripts fragment内确保所有页面都可使用 -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmModalTitle"><i class="bi bi-question-circle text-warning"></i> 确认操作</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="confirmModalMessage"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="confirmModalBtn">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 修改密码模态框 -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-key text-primary me-2"></i>修改密码</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="changePasswordForm">
+                        <div class="mb-3">
+                            <label for="oldPassword" class="form-label">当前密码</label>
+                            <input type="password" class="form-control" id="oldPassword" required placeholder="请输入当前密码">
+                        </div>
+                        <div class="mb-3">
+                            <label for="newPassword" class="form-label">新密码</label>
+                            <input type="password" class="form-control" id="newPassword" required placeholder="请输入新密码（至少6位）" minlength="6">
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirmPassword" class="form-label">确认新密码</label>
+                            <input type="password" class="form-control" id="confirmPassword" required placeholder="请再次输入新密码" minlength="6">
+                            <div class="invalid-feedback">两次输入的新密码不一致</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="submitChangePassword()">确认修改</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 显示修改密码模态框
+        function showChangePasswordModal() {
+            document.getElementById('changePasswordForm').reset();
+            document.getElementById('confirmPassword').classList.remove('is-invalid');
+            new bootstrap.Modal(document.getElementById('changePasswordModal')).show();
+        }
+        
+        // 提交修改密码
+        async function submitChangePassword() {
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (!oldPassword || !newPassword || !confirmPassword) {
+                showToast('请填写所有字段', 'warning');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                showToast('新密码至少需要6个字符', 'warning');
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                document.getElementById('confirmPassword').classList.add('is-invalid');
+                return;
+            }
+            
+            document.getElementById('confirmPassword').classList.remove('is-invalid');
+            
+            try {
+                const response = await axios.post('/api/users/change-password', {
+                    oldPassword: oldPassword,
+                    newPassword: newPassword
+                });
+                
+                if (response.data.code === 200) {
+                    showToast('密码修改成功，请重新登录', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('changePasswordModal')).hide();
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                } else {
+                    showToast(response.data.message || '密码修改失败', 'error');
+                }
+            } catch (error) {
+                showToast(error.response?.data?.message || '密码修改失败', 'error');
+            }
+        }
+        
+        // 回车键提交
+        document.getElementById('changePasswordForm')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                submitChangePassword();
+            }
+        });
+    </script>
+    </th:block>
+</body>
+</html>

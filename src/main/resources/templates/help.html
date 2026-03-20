@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('帮助文档')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('帮助文档')"></header>
+        
+        <div class="content-container" style="padding: 0; height: calc(100vh - 64px);">
+            <iframe src="/help.html" 
+                    style="width: 100%; height: 100%; border: none;" 
+                    title="Redis Cluster Manager 帮助文档">
+            </iframe>
+        </div>
+    </main>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-help');
+    </script>
+</body>
+</html>

@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('集群详情')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <div class="top-header" style="position: static;">
+            <nav aria-label="breadcrumb" style="--bs-breadcrumb-divider: '>';">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="/clusters" class="text-decoration-none">集群管理</a></li>
+                    <li class="breadcrumb-item active fw-semibold" id="groupName">集群详情</li>
+                </ol>
+            </nav>
+            <div class="header-actions">
+                <span class="badge bg-success" id="clusterStatus"><i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>运行中</span>
+            </div>
+        </div>
+        
+        <div class="content-container">
+            <!-- Stats Cards -->
+            <div class="row g-4 mb-4" id="overviewCards">
+                <div class="col-md-6 col-lg-3">
+                    <div class="stat-card primary">
+                        <div class="stat-label">总内存 (3主节点)</div>
+                        <div class="stat-value" id="totalMaxMemory">-</div>
+                        <div class="stat-change" id="maxMemoryDetail">
+                            <i class="bi bi-layers"></i>
+                            <span>所有主节点 maxmemory 的合计</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-3">
+                    <div class="stat-card warning">
+                        <div class="stat-label">内存使用 (3主节点)</div>
+                        <div class="stat-value" id="totalMemory">--</div>
+                        <div class="stat-change" id="memoryDetail">
+                            <i class="bi bi-memory"></i>
+                            <span>所有主节点 used_memory 的合计</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="stat-card success">
+                        <div class="stat-label">总连接数 (3主节点)</div>
+                        <div class="stat-value" id="totalClients">--</div>
+                        <div class="stat-change" id="clientsDetail">
+                            <i class="bi bi-people"></i>
+                            <span>所有主节点 connected_clients 的合计</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 刷新状态进度模态框 -->
+            <div class="modal fade" id="refreshProgressModal" tabindex="-1" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title"><i class="bi bi-arrow-clockwise"></i> 刷新状态</h5>
+                        </div>
+                        <div class="modal-body">
+                            <div class="text-center py-3" id="refreshLoadingSection">
+                                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                                    <span class="visually-hidden">加载中...</span>
+                                </div>
+                                <h6 class="text-muted mb-2">正在获取集群状态...</h6>
+                                <p class="text-muted small mb-0" id="refreshLoadingText">连接节点...</p>
+                            </div>
+                            <!-- 执行命令滚动明细 -->
+                            <div class="mt-3 border rounded" style="max-height: 300px; overflow-y: auto; background: #f8f9fa;">
+                                <table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th style="width: 60px;">时间</th>
+                                            <th style="width: 100px;">节点</th>
+                                            <th>执行命令</th>
+                                            <th style="width: 60px;">状态</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="refreshCommandsTable">
+                                        <!-- 动态生成命令执行记录 -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="modal-footer" id="refreshProgressFooter" style="display: none;">
+                            <button type="button" class="btn btn-primary" onclick="closeRefreshModal()">
+                                <i class="bi bi-check-lg"></i> 完成
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Bar -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <button class="btn btn-outline-info" onclick="checkStatus()">
+                            <i class="bi bi-arrow-clockwise"></i> 刷新状态
+                        </button>
+                        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#configModal">
+                            <i class="bi bi-sliders"></i> 动态更新参数
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="showClusterNodes()">
+                            <i class="bi bi-diagram-3"></i> NODES
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="showClusterInfo()">
+                            <i class="bi bi-info-circle"></i> INFO
+                        </button>
+
+                        <div class="ms-auto d-flex align-items-center gap-2">
+                            <span class="badge bg-info" id="refreshBadge">实时更新</span>
+                            <select id="refreshInterval" class="form-select form-select-sm" style="width: auto; min-width: 140px;">
+                                <option value="300000" selected>5分钟</option>
+                                <option value="600000">10分钟</option>
+                                <option value="0">手动刷新</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 节点列表 - 分组展示 -->
+            <div id="nodeGroupsContainer">
+                <!-- 3组节点动态生成 -->
+            </div>
+
+            <!-- 缓存查询按钮已移动到 Actions Bar -->
+
+            <!-- 说明信息 -->
+            <div class="card bg-light border-0">
+                <div class="card-body">
+                    <h6><i class="bi bi-info-circle"></i> 说明</h6>
+                    <ul class="mb-0 small text-muted">
+                        <li><strong>内存使用：</strong>仅统计3个主节点的used_memory，单位为MB</li>
+                        <li><strong>总连接数：</strong>仅统计3个主节点的connected_clients</li>
+                        <li><strong>节点状态：</strong>显示节点在系统中的记录状态，可能与实际Redis进程状态不一致</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Cluster Nodes Modal -->
+    <div class="modal fade" id="clusterNodesModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="bi bi-diagram-3"></i> NODES 原始输出</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <pre id="clusterNodesOutput" class="m-0 p-3 bg-dark text-light" style="max-height: 600px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 0.85rem; line-height: 1.5;">加载中...</pre>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-primary" onclick="refreshClusterNodes()">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cluster Info Modal -->
+    <div class="modal fade" id="clusterInfoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="bi bi-info-circle"></i> INFO 原始输出</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <pre id="clusterInfoOutput" class="m-0 p-3 bg-dark text-light" style="max-height: 600px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 0.85rem; line-height: 1.5;">加载中...</pre>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-primary" onclick="refreshClusterInfo()">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- Config Modal -->
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-sliders"></i> 动态更新参数</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 
+                        动态更新参数会立即生效，并自动写入配置文件。
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">配置项</label>
+                                <select class="form-select" id="configParam" onchange="onConfigParamChange()">
+                                    <option value="maxmemory">maxmemory (最大内存)</option>
+                                    <option value="maxmemory-policy">maxmemory-policy (淘汰策略)</option>
+                                    <option value="timeout">timeout (连接超时)</option>
+                                    <option value="tcp-keepalive">tcp-keepalive (TCP保活)</option>
+                                    <option value="save">save (RDB持久化策略)</option>
+                                    <option value="appendonly">appendonly (AOF持久化)</option>
+                                    <option value="appendfsync">appendfsync (AOF同步策略)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <!-- 默认文本输入 -->
+                            <div class="mb-3" id="configValueContainer">
+                                <label class="form-label">配置值</label>
+                                <input type="text" class="form-control" id="configValue" placeholder="请输入配置值">
+                            </div>
+                            
+                            <!-- 淘汰策略选择 -->
+                            <div class="mb-3" id="evictionPolicyContainer" style="display: none;">
+                                <label class="form-label">
+                                    淘汰策略
+                                    <a href="javascript:void(0)" onclick="showEvictionPolicyInfo()" class="ms-1 text-info" title="查看淘汰策略说明">
+                                        <i class="bi bi-question-circle"></i>
+                                    </a>
+                                </label>
+                                <select class="form-select" id="evictionPolicyValue">
+                                    <option value="noeviction">noeviction - 不淘汰，内存满时返回错误</option>
+                                    <option value="allkeys-lru" selected>allkeys-lru - 淘汰最近最少使用的key（推荐）</option>
+                                    <option value="allkeys-lfu">allkeys-lfu - 淘汰使用频率最少的key</option>
+                                    <option value="allkeys-random">allkeys-random - 随机淘汰所有key</option>
+                                    <option value="volatile-lru">volatile-lru - 淘汰设置了过期时间的LRU key</option>
+                                    <option value="volatile-lfu">volatile-lfu - 淘汰设置了过期时间的LFU key</option>
+                                    <option value="volatile-random">volatile-random - 随机淘汰设置了过期时间的key</option>
+                                    <option value="volatile-ttl">volatile-ttl - 淘汰即将过期的key（TTL小的）</option>
+                                </select>
+                            </div>
+                            
+                            <!-- RDB策略选择 -->
+                            <div class="mb-3" id="savePolicyContainer" style="display: none;">
+                                <label class="form-label">
+                                    RDB持久化策略
+                                    <i class="bi bi-question-circle text-info ms-1" title="控制Redis何时将内存数据保存到磁盘"></i>
+                                </label>
+                                <select class="form-select" id="savePolicyValue">
+                                    <option value='"900 1 300 10 60 10000"'>推荐：900秒1次修改/300秒10次/60秒10000次</option>
+                                    <option value='"900 1"'>精简：15分钟至少1次修改</option>
+                                    <option value='"300 10"'>适中：5分钟至少10次修改</option>
+                                    <option value='"60 1000"'>频繁：1分钟至少1000次修改</option>
+                                    <option value='""'>禁用RDB（不推荐）</option>
+                                </select>
+                            </div>
+                            
+                            <!-- AOF开关 -->
+                            <div class="mb-3" id="aofContainer" style="display: none;">
+                                <label class="form-label">
+                                    AOF持久化开关
+                                    <i class="bi bi-question-circle text-info ms-1" title="AOF记录每个写操作，数据更安全但性能略低"></i>
+                                </label>
+                                <select class="form-select" id="aofValue">
+                                    <option value="yes">开启 - 数据更安全，每次写入都记录</option>
+                                    <option value="no">关闭 - 性能更好，依赖RDB快照</option>
+                                </select>
+                            </div>
+                            
+                            <!-- AOF同步策略 -->
+                            <div class="mb-3" id="appendfsyncContainer" style="display: none;">
+                                <label class="form-label">
+                                    AOF同步策略
+                                    <i class="bi bi-question-circle text-info ms-1" title="控制AOF文件写入磁盘的频率"></i>
+                                </label>
+                                <select class="form-select" id="appendfsyncValue">
+                                    <option value="everysec" selected>everysec - 每秒同步（推荐）</option>
+                                    <option value="always">always - 每次写入都同步（最安全但最慢）</option>
+                                    <option value="no">no - 由操作系统决定（最快但不安全）</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 配置说明区域 -->
+                    <div id="configHelpText" class="alert alert-light border small mb-0">
+                        <i class="bi bi-info-circle text-primary"></i> 
+                        <span id="configHelpContent">设置Redis实例的最大内存限制，达到上限后将根据淘汰策略删除数据。</span>
+                    </div>
+                    <div id="configResult" style="display: none;">
+                        <hr>
+                        <h6>操作明细</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>节点</th>
+                                        <th>角色</th>
+                                        <th>状态</th>
+                                        <th>结果</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="configResultBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" id="applyConfigBtn" onclick="applyConfig()">
+                        <i class="bi bi-check-lg"></i> 应用配置
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 内存淘汰策略说明弹框 -->
+    <div class="modal fade" id="evictionPolicyModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="bi bi-info-circle"></i> 内存淘汰策略说明</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-lightbulb"></i> 当Redis内存使用达到maxmemory限制时，会根据配置的淘汰策略删除部分key来释放内存。
+                    </div>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>策略名称</th>
+                                <th>说明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>noeviction</code></td>
+                                <td>不淘汰，内存满时直接返回错误（默认策略）</td>
+                            </tr>
+                            <tr>
+                                <td><code>allkeys-lru</code></td>
+                                <td>从所有key中淘汰最近最少使用的（LRU）</td>
+                            </tr>
+                            <tr>
+                                <td><code>allkeys-lfu</code></td>
+                                <td>从所有key中淘汰使用频率最少的（LFU）</td>
+                            </tr>
+                            <tr>
+                                <td><code>allkeys-random</code></td>
+                                <td>从所有key中随机淘汰</td>
+                            </tr>
+                            <tr>
+                                <td><code>volatile-lru</code></td>
+                                <td>从设置了过期时间的key中淘汰最近最少使用的</td>
+                            </tr>
+                            <tr>
+                                <td><code>volatile-lfu</code></td>
+                                <td>从设置了过期时间的key中淘汰使用频率最少的</td>
+                            </tr>
+                            <tr>
+                                <td><code>volatile-random</code></td>
+                                <td>从设置了过期时间的key中随机淘汰</td>
+                            </tr>
+                            <tr>
+                                <td><code>volatile-ttl</code></td>
+                                <td>从设置了过期时间的key中淘汰即将过期的（TTL小的）</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> <strong>建议：</strong>缓存场景推荐使用 <code>allkeys-lru</code> 或 <code>allkeys-lfu</code> 策略。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    
+    <style>
+        /* 节点组卡片样式 - Redis红色主题 */
+        .node-group-card {
+            border: none;
+            box-shadow: 0 2px 8px rgba(220, 56, 44, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: box-shadow 0.3s ease;
+        }
+        
+        .node-group-card:hover {
+            box-shadow: 0 4px 16px rgba(220, 56, 44, 0.15);
+        }
+        
+        .node-group-header {
+            background: linear-gradient(135deg, #dc382c 0%, #b92d23 100%);
+            color: white;
+            padding: 0.75rem 1rem;
+            border-bottom: none;
+        }
+        
+        .node-group-header h6 {
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+        
+        .node-group-header .badge {
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 0.35em 0.65em;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        /* 节点组内表格样式优化 */
+        .node-group-card .table {
+            font-size: 0.875rem;
+        }
+        
+        .node-group-card .table thead th {
+            background-color: #f8f9fa;
+            color: #495057;
+            font-weight: 600;
+            border-top: none;
+            padding: 0.625rem 0.75rem;
+        }
+        
+        .node-group-card .table tbody td {
+            padding: 0.625rem 0.75rem;
+            vertical-align: middle;
+        }
+        
+        .node-group-card .table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* 状态点样式 */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-dot.online {
+            background-color: #28a745;
+            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.2);
+        }
+        
+        .status-dot.offline {
+            background-color: #dc3545;
+            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
+        }
+        
+        /* 淡入动画 */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Bootstrap 主题色覆盖 - 保持与系统一致 */
+        .node-group-card .bg-primary {
+            background-color: #dc382c !important;
+        }
+        
+        .node-group-card .text-primary {
+            color: #dc382c !important;
+        }
+        
+        /* 主节点徽章 */
+        .node-group-card .badge.bg-primary {
+            background: linear-gradient(135deg, #dc382c 0%, #b92d23 100%) !important;
+        }
+        
+        /* 从节点徽章 */
+        .node-group-card .badge.bg-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%) !important;
+            color: #fff !important;
+        }
+    </style>
+    
+    <script th:inline="javascript">
+        const clusterId = [[${clusterId}]];
+        let nodeRoleChart = null;
+        let memoryChart = null;
+
+        // 格式化内存显示（MB为单位）
+        function formatMemoryMB(mb) {
+            if (!mb || mb === 0) return '0 MB';
+            if (mb < 1024) {
+                return mb.toFixed(0) + ' MB';
+            } else {
+                return (mb / 1024).toFixed(2) + ' GB';
+            }
+        }
+
+        // 数据缓存
+        let clusterDataCache = null;
+        let refreshCommands = [];
+        let refreshModal = null;
+        let isManualRefreshing = false;
+
+        // 显示刷新状态模态框
+        function showRefreshModal() {
+            refreshCommands = [];
+            renderRefreshCommands();
+            
+            // 重置模态框状态
+            document.getElementById('refreshLoadingSection').style.display = 'block';
+            document.getElementById('refreshProgressFooter').style.display = 'none';
+            document.getElementById('refreshLoadingText').textContent = '连接节点...';
+            
+            if (!refreshModal) {
+                refreshModal = new bootstrap.Modal(document.getElementById('refreshProgressModal'));
+            }
+            refreshModal.show();
+            isManualRefreshing = true;
+        }
+
+        // 关闭刷新状态模态框
+        function closeRefreshModal() {
+            if (refreshModal) {
+                refreshModal.hide();
+            }
+            isManualRefreshing = false;
+        }
+
+        // 完成刷新状态
+        function completeRefreshModal() {
+            document.getElementById('refreshLoadingSection').style.display = 'none';
+            document.getElementById('refreshProgressFooter').style.display = 'block';
+        }
+
+        // 更新加载状态文字
+        function updateRefreshLoadingText(text) {
+            const loadingText = document.getElementById('refreshLoadingText');
+            if (loadingText && text) {
+                loadingText.textContent = text;
+            }
+        }
+
+        // 添加或更新命令状态（解决重复问题）
+        function updateCommandStatus(nodeName, command, status) {
+            const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const key = `${nodeName}_${command}`;
+            
+            // 查找是否已存在该命令
+            const existingIndex = refreshCommands.findIndex(cmd => 
+                cmd.nodeName === nodeName && cmd.command === command
+            );
+            
+            if (existingIndex >= 0) {
+                // 更新现有命令状态
+                refreshCommands[existingIndex].status = status;
+            } else {
+                // 添加新命令
+                refreshCommands.push({
+                    time,
+                    nodeName: nodeName || '系统',
+                    command: command || '',
+                    status: status || '执行中'
+                });
+            }
+            
+            if (isManualRefreshing) {
+                renderRefreshCommands();
+            }
+        }
+
+        // 渲染刷新命令列表
+        function renderRefreshCommands() {
+            const tbody = document.getElementById('refreshCommandsTable');
+            if (!tbody) return;
+            
+            tbody.innerHTML = refreshCommands.map(cmd => `
+                <tr>
+                    <td><small class="text-muted">${cmd.time}</small></td>
+                    <td><code class="small">${cmd.nodeName}</code></td>
+                    <td><code class="small text-primary">${escapeHtml(cmd.command)}</code></td>
+                    <td>
+                        <span class="badge bg-${cmd.status === '成功' ? 'success' : cmd.status === '失败' ? 'danger' : 'warning'}" style="font-size: 0.7rem;">
+                            ${cmd.status}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+            
+            // 自动滚动到底部
+            const container = tbody.closest('div[style*="overflow-y"]');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        // 加载概览（静默加载，不显示模态框）
+        async function loadOverview() {
+            try {
+                // 获取集群基本信息
+                const clusterRes = await axios.get(`/api/clusters/${clusterId}`);
+                if (clusterRes.data.code !== 200) {
+                    showToast('加载集群信息失败', 'error');
+                    return;
+                }
+                
+                const clusterData = clusterRes.data.data;
+                
+                // 更新页面标题
+                document.getElementById('groupName').textContent = clusterData.name || '集群详情';
+                
+                // 获取并更新集群状态
+                await updateClusterStatus();
+                
+                // 计算节点状态
+                const nodes = clusterData.nodes || [];
+                
+                // 更新3主节点内存和连接数统计（使用后端返回的人类可读格式）
+                const totalMaxMemoryHuman = clusterData.totalMaxMemoryHuman || '0MB';
+                const totalUsedMemoryHuman = clusterData.totalUsedMemoryHuman || '0MB';
+                const totalClients = clusterData.totalConnectedClients || 0;
+                const memoryUsageRate = clusterData.memoryUsageRate || 0;
+                
+                document.getElementById('totalMaxMemory').textContent = totalMaxMemoryHuman;
+                document.getElementById('totalMemory').textContent = totalUsedMemoryHuman;
+                document.getElementById('memoryDetail').innerHTML = `
+                    <i class="bi bi-memory"></i>
+                    <span>占比: ${memoryUsageRate}%</span>
+                `;
+                document.getElementById('totalClients').textContent = totalClients;
+                document.getElementById('clientsDetail').innerHTML = `
+                    <i class="bi bi-people"></i>
+                    <span>connected_clients合计</span>
+                `;
+                
+                // 渲染节点列表，传递集群密码用于获取淘汰策略
+                await renderNodesWithPolicy(nodes, clusterData.password);
+
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                showToast('加载数据失败', 'error');
+            }
+        }
+
+        // 更新集群状态显示
+        async function updateClusterStatus() {
+            try {
+                const res = await axios.get(`/api/clusters/${clusterId}/info`);
+                if (res.data.code === 200) {
+                    const clusterInfo = res.data.data;
+                    // 解析 cluster_state
+                    const stateMatch = clusterInfo.match(/cluster_state:(\w+)/);
+                    const clusterState = stateMatch ? stateMatch[1] : 'unknown';
+                    
+                    // 解析 cluster_slots_ok
+                    const slotsOkMatch = clusterInfo.match(/cluster_slots_ok:(\d+)/);
+                    const slotsOk = slotsOkMatch ? parseInt(slotsOkMatch[1]) : 0;
+                    
+                    // 更新状态显示
+                    const statusBadge = document.getElementById('clusterStatus');
+                    if (clusterState === 'ok' && slotsOk === 16384) {
+                        statusBadge.className = 'badge bg-success';
+                        statusBadge.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>运行中';
+                    } else if (clusterState === 'ok') {
+                        statusBadge.className = 'badge bg-warning';
+                        statusBadge.innerHTML = `<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>部分可用 (${slotsOk}/16384)`;
+                    } else {
+                        statusBadge.className = 'badge bg-danger';
+                        statusBadge.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>异常';
+                    }
+                } else {
+                    // 获取失败，显示异常
+                    const statusBadge = document.getElementById('clusterStatus');
+                    statusBadge.className = 'badge bg-danger';
+                    statusBadge.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>无法获取';
+                }
+            } catch (error) {
+                console.error('获取集群状态失败:', error);
+                const statusBadge = document.getElementById('clusterStatus');
+                statusBadge.className = 'badge bg-danger';
+                statusBadge.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>无法获取';
+            }
+        }
+
+        // 当前节点列表
+        let currentNodes = [];
+
+        // 渲染节点 - 按主从关系分组展示（3组）
+        // showModal: 是否显示刷新模态框（手动刷新时为true）
+        async function renderNodesWithPolicy(nodes, clusterPassword, showModal = false) {
+            currentNodes = nodes || [];
+            const container = document.getElementById('nodeGroupsContainer');
+            
+            // 分离主节点和从节点
+            const masterNodes = (nodes || []).filter(n => (n.nodeType || n.role) === 'master');
+            const slaveNodes = (nodes || []).filter(n => (n.nodeType || n.role) !== 'master');
+            
+            console.log('渲染节点 - 主节点:', masterNodes.map(m => ({ip: m.ip, nodeIndex: m.nodeIndex, nodeId: m.nodeId})));
+            console.log('渲染节点 - 从节点:', slaveNodes.map(s => ({ip: s.ip, nodeIndex: s.nodeIndex, masterId: s.masterId, masterIndex: s.masterIndex})));
+            
+            if (!nodes || nodes.length === 0) {
+                container.innerHTML = '<div class="alert alert-info">暂无节点数据</div>';
+                return;
+            }
+            
+            let html = '';
+            
+            // 按主节点分组（3组）
+            masterNodes.forEach((master, groupIndex) => {
+                // 查找该主节点对应的从节点 - 修复从节点匹配逻辑
+                const slavesOfMaster = slaveNodes.filter(s => {
+                    // 1. 首先通过 masterId 匹配（Redis节点ID）- 用于导入的集群
+                    if (s.masterId && master.nodeId && s.masterId === master.nodeId) {
+                        console.log(`从节点 ${s.ip} 通过 masterId 匹配到主节点 ${master.ip}`);
+                        return true;
+                    }
+                    // 2. 通过 masterIndex 匹配（主节点的nodeIndex）- 用于导入的集群
+                    // 使用 == 而不是 === 以处理可能的字符串/数字类型不匹配问题
+                    if (s.masterIndex != null && master.nodeIndex != null && 
+                        s.masterIndex == master.nodeIndex) {
+                        console.log(`从节点 ${s.ip}(masterIndex=${s.masterIndex}) 通过 masterIndex 匹配到主节点 ${master.ip}(nodeIndex=${master.nodeIndex})`);
+                        return true;
+                    }
+                    // 3. 通过 nodeIndex 计算匹配（系统创建的集群）
+                    // 通常从节点的 nodeIndex 对应主节点的 nodeIndex + 3
+                    // 仅当没有设置 masterIndex 时才使用此回退方法
+                    if (s.masterIndex == null && s.nodeIndex != null && master.nodeIndex != null) {
+                        const matches = s.nodeIndex === master.nodeIndex + 3;
+                        if (matches) {
+                            console.log(`从节点 ${s.ip} 通过 nodeIndex+3 回退匹配到主节点 ${master.ip}`);
+                        }
+                        return matches;
+                    }
+                    return false;
+                });
+                
+                console.log(`主节点 ${master.ip}(nodeIndex=${master.nodeIndex}) 找到 ${slavesOfMaster.length} 个从节点:`, slavesOfMaster.map(s => s.ip));
+                
+                html += `
+                    <div class="card mb-4 node-group-card">
+                        <div class="card-header node-group-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-hdd-stack"></i> 节点组 ${groupIndex + 1} - 主节点: ${master.ip}:${master.port}
+                                    <span class="badge bg-white text-danger ms-2">
+                                        1主 + ${slavesOfMaster.length}从
+                                    </span>
+                                </h6>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>节点</th>
+                                            <th>角色</th>
+                                            <th>状态</th>
+                                            <th>最大内存</th>
+                                            <th>内存使用</th>
+                                            <th>连接数</th>
+                                            <th>
+                                                淘汰策略
+                                                <i class="bi bi-question-circle ms-1" style="cursor: pointer; font-size: 0.8rem; color: #dc382c;" onclick="showEvictionPolicyInfo()"></i>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${renderNodeRow(master, true, null)}
+                                        ${slavesOfMaster.map(slave => renderNodeRow(slave, false, master.ip + ':' + master.port)).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+            
+            // 在一个SSH连接中批量获取所有节点的淘汰策略
+            await batchFetchEvictionPolicy(nodes, clusterPassword, showModal);
+        }
+        
+        // 保留renderNodes以兼容以前的代码
+        function renderNodes(nodes) {
+            renderNodesWithPolicy(nodes);
+        }
+        
+        // 渲染单个节点行（返回HTML字符串）
+        function renderNodeRow(node, isMaster, masterInfo) {
+            const isRunning = node.status === 1;
+            const maxMemHuman = node.maxMemoryHuman || (node.maxMemory ? formatMemoryMB(node.maxMemory) : '-');
+            const usedMemHuman = node.usedMemoryHuman || (node.usedMemory ? formatMemoryMB(node.usedMemory) : '-');
+            const clients = node.connectedClients || 0;
+            // 移除蓝色背景，保持默认样式
+            const rowClass = '';
+            const masterLabel = isMaster ? '' : `<span class="badge bg-light text-muted ms-1" style="font-size: 0.65rem;">复制自 ${masterInfo}</span>`;
+            
+            return `
+                <tr style="animation: fadeIn 0.3s ease-out;" class="${rowClass}">
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="status-dot ${isRunning ? 'online' : 'offline'}"></span>
+                            <code>${node.ip + ':' + node.port}</code>
+                            ${masterLabel}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge bg-${isMaster ? 'primary' : 'secondary'}">
+                            ${isMaster ? '主节点' : '从节点'}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge bg-${isRunning ? 'success' : 'danger'}">
+                            ${isRunning ? '运行中' : '已停止'}
+                        </span>
+                    </td>
+                    <td>${maxMemHuman}</td>
+                    <td>${usedMemHuman}</td>
+                    <td>${clients > 0 ? clients : '-'}</td>
+                    <td class="eviction-policy-cell" data-node-id="${node.nodeId || node.id}" data-ip="${node.ip}" data-port="${node.port}">
+                        <span class="badge bg-light text-dark">获取中...</span>
+                    </td>
+                </tr>
+            `;
+        }
+        
+        // 批量获取所有节点的淘汰策略（在同一个SSH连接中）
+        async function batchFetchEvictionPolicy(nodes, clusterPassword, showModal = false) {
+            // 按服务器分组节点，同一服务器的节点共享SSH连接
+            const serverGroups = {};
+            
+            nodes.forEach(node => {
+                if (node.status !== 1) return; // 只处理运行中的节点
+                
+                const serverKey = node.serverIp || node.ip;
+                if (!serverGroups[serverKey]) {
+                    serverGroups[serverKey] = [];
+                }
+                serverGroups[serverKey].push(node);
+            });
+            
+            // 对每个服务器批量获取淘汰策略
+            for (const [serverIp, serverNodes] of Object.entries(serverGroups)) {
+                for (const node of serverNodes) {
+                    const nodeName = `${node.ip}:${node.port}`;
+                    // 显示实际执行的命令（使用 info memory 获取 maxmemory_policy，带密码）
+                    const authPart = clusterPassword ? ` -a ***` : '';
+                    const command = `redis-cli -h ${node.ip} -p ${node.port}${authPart} info memory | grep maxmemory_policy`;
+                    
+                    // 如果是手动刷新，记录命令到模态框
+                    if (showModal) {
+                        updateCommandStatus(nodeName, command, '执行中');
+                    }
+                    
+                    try {
+                        const res = await axios.get(`/api/clusters/${clusterId}/node-config`, {
+                            params: { ip: node.ip, port: node.port, param: 'maxmemory-policy' }
+                        });
+                        
+                        if (res.data.code === 200) {
+                            const policy = res.data.data || 'unknown';
+                            updateNodeEvictionPolicy(node.nodeId || node.id, node.ip, node.port, policy);
+                            if (showModal) {
+                                updateCommandStatus(nodeName, command, '成功');
+                            }
+                        } else {
+                            updateNodeEvictionPolicy(node.nodeId || node.id, node.ip, node.port, '获取失败');
+                            if (showModal) {
+                                updateCommandStatus(nodeName, command, '失败');
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('获取淘汰策略失败:', e);
+                        updateNodeEvictionPolicy(node.nodeId || node.id, node.ip, node.port, '获取失败');
+                        if (showModal) {
+                            updateCommandStatus(nodeName, command, '失败');
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 更新节点淘汰策略显示
+        function updateNodeEvictionPolicy(nodeId, ip, port, policy) {
+            const cells = document.querySelectorAll('.eviction-policy-cell');
+            cells.forEach(cell => {
+                // 通过 nodeId 或 ip+port 匹配
+                if ((nodeId && cell.dataset.nodeId === String(nodeId)) || 
+                    (cell.dataset.ip === ip && cell.dataset.port === String(port))) {
+                    const policyClass = getEvictionPolicyClass(policy);
+                    cell.innerHTML = `<span class="badge ${policyClass}">${policy}</span>`;
+                }
+            });
+        }
+        
+        // 获取淘汰策略的样式类
+        function getEvictionPolicyClass(policy) {
+            if (!policy || policy === 'unknown') return 'bg-light text-dark';
+            if (policy.includes('allkeys')) return 'bg-warning text-dark';
+            if (policy.includes('volatile')) return 'bg-info text-dark';
+            return 'bg-secondary';
+        }
+
+        // 显示节点信息
+        async function showNodeInfo(ip, port) {
+            showToast(`节点: ${ip}:${port}`, 'info');
+        }
+
+
+
+        // 显示淘汰策略说明弹框
+        function showEvictionPolicyInfo() {
+            new bootstrap.Modal(document.getElementById('evictionPolicyModal')).show();
+        }
+
+        // 操作函数 - 手动刷新
+        async function checkStatus() {
+            showRefreshModal();
+            await refreshClusterData(true);
+        }
+        
+        // 统一的数据刷新函数
+        // showModal: 是否显示模态框（手动刷新时为true，定时刷新时为false）
+        async function refreshClusterData(showModal = false) {
+            if (showModal) {
+                updateCommandStatus('系统', `GET /api/clusters/${clusterId}`, '执行中');
+            }
+            
+            try {
+                // 获取集群基本信息
+                const clusterRes = await axios.get(`/api/clusters/${clusterId}`);
+                if (clusterRes.data.code !== 200) {
+                    if (showModal) {
+                        updateCommandStatus('系统', `GET /api/clusters/${clusterId}`, '失败');
+                        completeRefreshModal();
+                    }
+                    showToast('加载集群信息失败', 'error');
+                    return;
+                }
+                
+                if (showModal) {
+                    updateCommandStatus('系统', `GET /api/clusters/${clusterId}`, '成功');
+                }
+                
+                const clusterData = clusterRes.data.data;
+                clusterDataCache = clusterData; // 缓存数据
+                
+                // 更新页面标题
+                document.getElementById('groupName').textContent = clusterData.name || '集群详情';
+                
+                // 更新集群状态
+                await updateClusterStatus();
+                
+                // 计算节点状态
+                const nodes = clusterData.nodes || [];
+                
+                // 更新3主节点内存和连接数统计
+                const totalMaxMemoryHuman = clusterData.totalMaxMemoryHuman || '0MB';
+                const totalUsedMemoryHuman = clusterData.totalUsedMemoryHuman || '0MB';
+                const totalClients = clusterData.totalConnectedClients || 0;
+                const memoryUsageRate = clusterData.memoryUsageRate || 0;
+                
+                document.getElementById('totalMaxMemory').textContent = totalMaxMemoryHuman;
+                document.getElementById('totalMemory').textContent = totalUsedMemoryHuman;
+                document.getElementById('memoryDetail').innerHTML = `
+                    <i class="bi bi-memory"></i>
+                    <span>占比: ${memoryUsageRate}%</span>
+                `;
+                document.getElementById('totalClients').textContent = totalClients;
+                document.getElementById('clientsDetail').innerHTML = `
+                    <i class="bi bi-people"></i>
+                    <span>connected_clients合计</span>
+                `;
+                
+                // 渲染节点列表并获取淘汰策略
+                await renderNodesWithPolicy(nodes, clusterData.password, showModal);
+                
+                // 如果是手动刷新，显示完成按钮
+                if (showModal) {
+                    completeRefreshModal();
+                }
+
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                if (showModal) {
+                    updateCommandStatus('系统', '加载异常', '失败');
+                    completeRefreshModal();
+                }
+                showToast('加载数据失败', 'error');
+            }
+        }
+
+        // 配置项切换时的处理
+        function onConfigParamChange() {
+            const param = document.getElementById('configParam').value;
+            
+            // 隐藏所有配置值输入容器
+            document.getElementById('configValueContainer').style.display = 'none';
+            document.getElementById('evictionPolicyContainer').style.display = 'none';
+            document.getElementById('savePolicyContainer').style.display = 'none';
+            document.getElementById('aofContainer').style.display = 'none';
+            document.getElementById('appendfsyncContainer').style.display = 'none';
+            
+            // 配置项的说明文本
+            const helpTexts = {
+                'maxmemory': '<strong>maxmemory</strong>：设置Redis实例的最大内存限制。达到上限后将根据淘汰策略删除数据。<br>示例：<code>1024mb</code>、<code>2gb</code>、<code>512m</code>',
+                'maxmemory-policy': '<strong>maxmemory-policy</strong>：当内存达到maxmemory限制时，选择要删除的key的策略。',
+                'timeout': '<strong>timeout</strong>：客户端空闲多少秒后关闭连接。0表示永不超时（生产环境建议设置）。<br>示例：<code>300</code>（5分钟）、<code>600</code>（10分钟）、<code>0</code>（永不超时）',
+                'tcp-keepalive': '<strong>tcp-keepalive</strong>：TCP保活机制，检测死连接。如果客户端没有响应，Redis会关闭连接。<br>示例：<code>60</code>（推荐，60秒检测一次）、<code>300</code>、<code>0</code>（禁用）',
+                'save': '<strong>save</strong>：RDB快照持久化策略，控制何时将内存数据保存到磁盘。格式：save &lt;秒&gt; &lt;修改次数&gt;',
+                'appendonly': '<strong>appendonly</strong>：AOF持久化开关。AOF记录每个写操作，数据更安全但性能略低。',
+                'appendfsync': '<strong>appendfsync</strong>：AOF文件同步到磁盘的频率。影响数据安全性和写入性能。'
+            };
+            
+            // 更新说明文本
+            document.getElementById('configHelpContent').innerHTML = helpTexts[param] || '';
+            
+            // 根据配置项显示对应的输入控件
+            switch (param) {
+                case 'maxmemory-policy':
+                    document.getElementById('evictionPolicyContainer').style.display = 'block';
+                    break;
+                case 'save':
+                    document.getElementById('savePolicyContainer').style.display = 'block';
+                    break;
+                case 'appendonly':
+                    document.getElementById('aofContainer').style.display = 'block';
+                    break;
+                case 'appendfsync':
+                    document.getElementById('appendfsyncContainer').style.display = 'block';
+                    break;
+                default:
+                    // 其他配置项使用普通文本输入
+                    document.getElementById('configValueContainer').style.display = 'block';
+                    const configValue = document.getElementById('configValue');
+                    const placeholders = {
+                        'maxmemory': '例如: 1024mb',
+                        'timeout': '例如: 300',
+                        'tcp-keepalive': '例如: 60'
+                    };
+                    configValue.placeholder = placeholders[param] || '请输入配置值';
+            }
+        }
+
+        async function applyConfig() {
+            const param = document.getElementById('configParam').value;
+            let value;
+            
+            // 根据配置项类型获取值
+            switch (param) {
+                case 'maxmemory-policy':
+                    value = document.getElementById('evictionPolicyValue').value;
+                    break;
+                case 'save':
+                    value = document.getElementById('savePolicyValue').value;
+                    break;
+                case 'appendonly':
+                    value = document.getElementById('aofValue').value;
+                    break;
+                case 'appendfsync':
+                    value = document.getElementById('appendfsyncValue').value;
+                    break;
+                default:
+                    value = document.getElementById('configValue').value;
+                    if (!value) { showToast('请输入配置值', 'warning'); return; }
+            }
+
+            const btn = document.getElementById('applyConfigBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 应用中...';
+
+            try {
+                const res = await axios.post(`/api/clusters/${clusterId}/config?parameter=${param}&value=${value}`);
+                if (res.data.code === 200) {
+                    const result = res.data.data;
+                    
+                    // 显示操作明细
+                    const tbody = document.getElementById('configResultBody');
+                    tbody.innerHTML = result.details.map(d => `
+                        <tr>
+                            <td><code>${d.address}</code></td>
+                            <td><span class="badge bg-${d.role === 'master' ? 'primary' : 'secondary'}">${d.role === 'master' ? '主节点' : '从节点'}</span></td>
+                            <td><i class="bi bi-${d.success ? 'check-circle text-success' : 'x-circle text-danger'}"></i></td>
+                            <td><small>${d.message}</small></td>
+                        </tr>
+                    `).join('');
+                    
+                    document.getElementById('configResult').style.display = 'block';
+                    showToast(`配置完成: 成功${result.successCount}, 失败${result.failCount}`, result.failCount > 0 ? 'warning' : 'success');
+                    
+                    // 配置完成后隐藏"应用配置"按钮，仅显示关闭按钮
+                    document.getElementById('applyConfigBtn').style.display = 'none';
+                    
+                    // 3秒后自动关闭弹窗并刷新详情
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(document.getElementById('configModal')).hide();
+                        loadOverview();
+                    }, 3000);
+                } else {
+                    showToast(res.data.message, 'error');
+                }
+            } catch (e) { 
+                showToast('配置失败: ' + (e.response?.data?.message || e.message), 'error'); 
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg"></i> 应用配置';
+            }
+        }
+        
+        // 重置配置结果区域当模态框关闭时
+        document.getElementById('configModal').addEventListener('hidden.bs.modal', function () {
+            document.getElementById('configResult').style.display = 'none';
+            document.getElementById('configResultBody').innerHTML = '';
+            document.getElementById('configValue').value = '';
+            // 重新显示"应用配置"按钮
+            const applyBtn = document.getElementById('applyConfigBtn');
+            applyBtn.style.display = '';
+            applyBtn.disabled = false;
+            applyBtn.innerHTML = '<i class="bi bi-check-lg"></i> 应用配置';
+        });
+
+        function viewMetrics(instanceId) {
+            window.open(`/api/monitor/instance/${instanceId}`, '_blank');
+        }
+
+        // CLUSTER NODES 显示
+        let clusterNodesModal = null;
+        async function showClusterNodes() {
+            if (!clusterNodesModal) {
+                clusterNodesModal = new bootstrap.Modal(document.getElementById('clusterNodesModal'));
+            }
+            clusterNodesModal.show();
+            await refreshClusterNodes();
+        }
+        
+        // 过滤掉警告行的原始输出
+        function filterWarningLines(rawData) {
+            if (!rawData) return '无数据';
+            return rawData.split('\n')
+                .filter(line => !line.trim().startsWith('Warning:'))
+                .join('\n')
+                .trim();
+        }
+
+        async function refreshClusterNodes() {
+            const output = document.getElementById('clusterNodesOutput');
+            output.textContent = '加载中...';
+            try {
+                const res = await axios.get(`/api/clusters/${clusterId}/nodes`);
+                if (res.data.code === 200) {
+                    output.textContent = filterWarningLines(res.data.data) || '无输出';
+                } else {
+                    output.textContent = '获取失败: ' + res.data.message;
+                }
+            } catch (e) {
+                output.textContent = '获取失败: ' + (e.response?.data?.message || e.message);
+            }
+        }
+        
+        function copyClusterNodes() {
+            const output = document.getElementById('clusterNodesOutput');
+            navigator.clipboard.writeText(output.textContent).then(() => {
+                showToast('已复制到剪贴板', 'success');
+            }).catch(() => {
+                showToast('复制失败', 'error');
+            });
+        }
+        
+        // CLUSTER INFO 显示
+        let clusterInfoModal = null;
+        async function showClusterInfo() {
+            if (!clusterInfoModal) {
+                clusterInfoModal = new bootstrap.Modal(document.getElementById('clusterInfoModal'));
+            }
+            clusterInfoModal.show();
+            await refreshClusterInfo();
+        }
+        
+        async function refreshClusterInfo() {
+            const output = document.getElementById('clusterInfoOutput');
+            output.textContent = '加载中...';
+            try {
+                const res = await axios.get(`/api/clusters/${clusterId}/info`);
+                if (res.data.code === 200) {
+                    output.textContent = filterWarningLines(res.data.data) || '无输出';
+                } else {
+                    output.textContent = '获取失败: ' + res.data.message;
+                }
+            } catch (e) {
+                output.textContent = '获取失败: ' + (e.response?.data?.message || e.message);
+            }
+        }
+        
+        function copyClusterInfo() {
+            const output = document.getElementById('clusterInfoOutput');
+            navigator.clipboard.writeText(output.textContent).then(() => {
+                showToast('已复制到剪贴板', 'success');
+            }).catch(() => {
+                showToast('复制失败', 'error');
+            });
+        }
+
+        // 刷新控制
+        let refreshIntervalId = null;
+        const refreshSelect = document.getElementById('refreshInterval');
+        const refreshBadge = document.getElementById('refreshBadge');
+        
+        function startAutoRefresh(interval) {
+            // 清除现有定时器
+            if (refreshIntervalId) {
+                clearInterval(refreshIntervalId);
+                refreshIntervalId = null;
+            }
+            
+            // 如果间隔为0，则不启动自动刷新
+            if (interval === 0) {
+                refreshBadge.textContent = '手动刷新';
+                refreshBadge.className = 'badge bg-secondary';
+                return;
+            }
+            
+            // 启动新的定时器
+            refreshIntervalId = setInterval(loadOverview, interval);
+            
+            // 更新徽章显示
+            const intervalText = (interval / 60000) + '分钟';
+            refreshBadge.textContent = intervalText + '更新';
+            refreshBadge.className = 'badge bg-info';
+        }
+        
+        // 监听刷新频率变化
+        refreshSelect.addEventListener('change', function() {
+            const interval = parseInt(this.value);
+            startAutoRefresh(interval);
+        });
+
+        // 确认删除集群（停止服务）
+        function confirmDeleteCluster() {
+            confirmAction(
+                '<div class="text-danger"><i class="bi bi-exclamation-triangle-fill fs-1"></i></div>' +
+                '<div class="mt-2">确定要删除集群 <strong>' + (clusterData ? clusterData.name : '') + '</strong> 吗？</div>' +
+                '<div class="small text-muted mt-2">此操作将：</div>' +
+                '<ul class="small text-muted text-start mt-1">' +
+                '<li>停止所有Redis节点</li>' +
+                '<li>删除系统记录</li>' +
+                '<li>保留配置文件和日志</li>' +
+                '</ul>',
+                async function() {
+                    try {
+                        const response = await axios.delete('/api/clusters/' + clusterId);
+                        if (response.data.code === 200) {
+                            showToast('集群删除任务已启动', 'success');
+                            setTimeout(() => {
+                                window.location.href = '/clusters';
+                            }, 2000);
+                        } else {
+                            showToast(response.data.message, 'error');
+                        }
+                    } catch (error) {
+                        showToast(error.response?.data?.message || '删除失败', 'error');
+                    }
+                },
+                '<i class="bi bi-trash text-danger"></i> 删除集群',
+                '确认删除',
+                'btn-danger'
+            );
+        }
+
+        // 确认仅删除记录（不停止服务）
+        function confirmDeleteRecordOnly() {
+            confirmAction(
+                '<div class="text-warning"><i class="bi bi-file-earmark-x fs-1"></i></div>' +
+                '<div class="mt-2">确定要仅删除集群 <strong>' + (clusterData ? clusterData.name : '') + '</strong> 的记录吗？</div>' +
+                '<div class="alert alert-warning mt-3 mb-0">' +
+                '<i class="bi bi-exclamation-triangle-fill"></i> ' +
+                '<strong>注意：</strong>此操作仅删除系统中的记录，服务器上的Redis集群服务将继续运行。' +
+                '</div>',
+                async function() {
+                    try {
+                        const response = await axios.delete('/api/clusters/' + clusterId + '/record-only');
+                        if (response.data.code === 200) {
+                            showToast('集群记录已删除', 'success');
+                            setTimeout(() => {
+                                window.location.href = '/clusters';
+                            }, 1500);
+                        } else {
+                            showToast(response.data.message, 'error');
+                        }
+                    } catch (error) {
+                        showToast(error.response?.data?.message || '删除失败', 'error');
+                    }
+                },
+                '<i class="bi bi-file-earmark-x text-warning"></i> 仅删除记录',
+                '确认删除',
+                'btn-warning'
+            );
+        }
+        
+        // 初始化
+        loadOverview();
+        startAutoRefresh(300000); // 默认5分钟（与下拉框默认值保持一致）
+        
+        // 初始化配置项显示（默认maxmemory）
+        onConfigParamChange();
+    </script>
+</body>
+</html>
