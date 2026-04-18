@@ -165,6 +165,33 @@
         </div>
     </div>
 
+    <!-- Node Config Modal -->
+    <div class="modal fade" id="nodeConfigModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="bi bi-gear"></i> 节点配置信息</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="p-2 bg-light border-bottom">
+                        <small class="text-muted">
+                            <i class="bi bi-hdd"></i> 节点: <strong id="nodeConfigTitle">-</strong>
+                            <span class="ms-3"><i class="bi bi-clock"></i> 获取时间: <span id="nodeConfigTime">-</span></span>
+                        </small>
+                    </div>
+                    <pre id="nodeConfigOutput" class="m-0 p-3 bg-dark text-light" style="max-height: 500px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 0.8rem; line-height: 1.4;">加载中...</pre>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-outline-primary" onclick="refreshNodeConfig()">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Cluster Info Modal -->
     <div class="modal fade" id="clusterInfoModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -515,6 +542,10 @@
         let refreshCommands = [];
         let refreshModal = null;
         let isManualRefreshing = false;
+        
+        // 当前查看配置的节点信息
+        let currentConfigNode = { ip: null, port: null };
+        let nodeConfigModal = null;
 
         // 显示刷新状态模态框
         function showRefreshModal() {
@@ -787,6 +818,7 @@
                                                 淘汰策略
                                                 <i class="bi bi-question-circle ms-1" style="cursor: pointer; font-size: 0.8rem; color: #dc382c;" onclick="showEvictionPolicyInfo()"></i>
                                             </th>
+                                            <th style="width: 90px;">操作</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -845,6 +877,11 @@
                     <td>${clients > 0 ? clients : '-'}</td>
                     <td class="eviction-policy-cell" data-node-id="${node.nodeId || node.id}" data-ip="${node.ip}" data-port="${node.port}">
                         <span class="badge bg-light text-dark">获取中...</span>
+                    </td>
+                    <td style="white-space: nowrap;">
+                        <button class="btn btn-outline-info btn-sm" onclick="showNodeConfig('${node.ip}', ${node.port})" title="查看配置" style="white-space: nowrap;">
+                            <i class="bi bi-gear"></i> 配置
+                        </button>
                     </td>
                 </tr>
             `;
@@ -1190,6 +1227,46 @@
             }).catch(() => {
                 showToast('复制失败', 'error');
             });
+        }
+        
+        // 显示节点配置弹窗
+        async function showNodeConfig(ip, port) {
+            currentConfigNode = { ip, port };
+            
+            if (!nodeConfigModal) {
+                nodeConfigModal = new bootstrap.Modal(document.getElementById('nodeConfigModal'));
+            }
+            
+            // 更新标题
+            document.getElementById('nodeConfigTitle').textContent = `${ip}:${port}`;
+            document.getElementById('nodeConfigTime').textContent = new Date().toLocaleString();
+            document.getElementById('nodeConfigOutput').textContent = '加载中...';
+            
+            nodeConfigModal.show();
+            await refreshNodeConfig();
+        }
+        
+        // 刷新节点配置
+        async function refreshNodeConfig() {
+            const { ip, port } = currentConfigNode;
+            if (!ip || !port) return;
+            
+            const output = document.getElementById('nodeConfigOutput');
+            output.textContent = '加载中...';
+            document.getElementById('nodeConfigTime').textContent = new Date().toLocaleString();
+            
+            try {
+                const res = await axios.get(`/api/clusters/${clusterId}/node-config-all`, {
+                    params: { ip, port }
+                });
+                if (res.data.code === 200) {
+                    output.textContent = res.data.data || '无配置数据';
+                } else {
+                    output.textContent = '获取失败: ' + res.data.message;
+                }
+            } catch (e) {
+                output.textContent = '获取失败: ' + (e.response?.data?.message || e.message);
+            }
         }
         
         // CLUSTER INFO 显示

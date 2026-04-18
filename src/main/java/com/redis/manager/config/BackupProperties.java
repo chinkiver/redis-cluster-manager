@@ -42,6 +42,19 @@ public class BackupProperties {
      */
     private String databaseFile = "./data/redis-manager.mv.db";
 
+    /**
+     * 是否使用外部 Crontab 触发备份
+     * true: 禁用应用内定时任务，通过 Linux Crontab 调用 API 触发
+     * false: 使用应用内 @Scheduled 定时任务（默认）
+     */
+    private boolean useCronJob = false;
+
+    /**
+     * API 调用 Token（用于 Crontab 调用时的安全验证）
+     * 建议设置复杂字符串，如 UUID
+     */
+    private String apiToken = "";
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -80,5 +93,21 @@ public class BackupProperties {
 
     public void setDatabaseFile(String databaseFile) {
         this.databaseFile = databaseFile;
+    }
+
+    public boolean isUseCronJob() {
+        return useCronJob;
+    }
+
+    public void setUseCronJob(boolean useCronJob) {
+        this.useCronJob = useCronJob;
+    }
+
+    public String getApiToken() {
+        return apiToken;
+    }
+
+    public void setApiToken(String apiToken) {
+        this.apiToken = apiToken;
     }
 }

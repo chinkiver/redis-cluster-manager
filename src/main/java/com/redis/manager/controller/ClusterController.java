@@ -185,6 +185,17 @@ public class ClusterController {
     }
 
     /**
+     * 获取节点完整配置（CONFIG GET *）
+     */
+    @GetMapping("/{id}/node-config-all")
+    public Result<String> getNodeConfigAll(
+            @PathVariable Long id,
+            @RequestParam String ip,
+            @RequestParam Integer port) {
+        return clusterService.getNodeConfigAll(id, ip, port);
+    }
+
+    /**
      * 修改集群名称
      */
     @PutMapping("/{id}/name")

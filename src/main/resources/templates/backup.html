@@ -70,7 +70,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="mb-1"><i class="bi bi-database me-2"></i>数据库备份管理</h6>
-                            <p class="text-muted mb-0 small">系统自动每日凌晨 2 点执行备份，保留最近 30 天的备份文件</p>
+                            <p class="text-muted mb-0 small">系统自动每日凌晨 2 点执行备份，保留最近 7 天的备份文件</p>
                         </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-outline-primary" onclick="refreshBackupList()">
@@ -98,12 +98,12 @@
                         <table class="table table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 80px;">序号</th>
+                                    <th style="width: 60px;">序号</th>
                                     <th>文件名</th>
+                                    <th style="width: 80px;">来源</th>
                                     <th style="width: 120px;">文件大小</th>
                                     <th style="width: 150px;">创建时间</th>
-                                    <th style="width: 100px;">状态</th>
-                                    <th style="width: 100px;">操作</th>
+                                    <th style="width: 80px;">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="backupTableBody">
@@ -305,7 +305,7 @@
                 document.getElementById('backupTableBody').innerHTML = `
                     <tr>
                         <td colspan="6" class="text-center py-5 text-muted">
-                            <i class="bi bi-inbox fs-1"></i>
+                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
                             <p class="mt-2">暂无备份文件</p>
                         </td>
                     </tr>
@@ -317,6 +317,10 @@
                 const date = new Date(backup.createTime);
                 const isLatest = index === 0 && currentPage === 1;
                 const rowNum = (currentPage - 1) * pageSize + index + 1;
+                // 来源标签
+                const sourceBadge = backup.source === 'MANUAL' 
+                    ? '<span class="badge bg-warning text-dark"><i class="bi bi-person me-1"></i>人工</span>'
+                    : '<span class="badge bg-info"><i class="bi bi-clock me-1"></i>系统</span>';
                 return `
                     <tr>
                         <td>${rowNum}</td>
@@ -325,13 +329,9 @@
                             ${backup.filename}
                             ${isLatest ? '<span class="badge bg-success ms-2">最新</span>' : ''}
                         </td>
+                        <td>${sourceBadge}</td>
                         <td>${backup.formattedSize}</td>
                         <td>${formatDateTime(date)}</td>
-                        <td>
-                            <span class="badge bg-success">
-                                <i class="bi bi-check-circle me-1"></i>正常
-                            </span>
-                        </td>
                         <td>
                             <button class="btn btn-sm btn-outline-danger" onclick="deleteBackup('${backup.filename}')" title="删除此备份">
                                 <i class="bi bi-trash"></i>

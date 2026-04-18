@@ -23,10 +23,10 @@ public class SystemConfigService {
     public static final Map<String, String> DEFAULT_CONFIGS = new HashMap<>();
 
     static {
-        DEFAULT_CONFIGS.put("sys.name", "缓存3×3英雄");
-        DEFAULT_CONFIGS.put("sys.logo", "/Redis.png");
-        DEFAULT_CONFIGS.put("sys.icon", "/Redis.png");
-        DEFAULT_CONFIGS.put("sys.login.title", "缓存3×3英雄");
+        DEFAULT_CONFIGS.put("sys.name", "缓存3×3监控英雄");
+        DEFAULT_CONFIGS.put("sys.logo", "/redis.png");
+        DEFAULT_CONFIGS.put("sys.icon", "/favicon.ico");
+        DEFAULT_CONFIGS.put("sys.login.title", "缓存3×3监控英雄");
         DEFAULT_CONFIGS.put("sys.login.subtitle", "Redis集群管理，请登录继续操作");
         DEFAULT_CONFIGS.put("sys.copyright", "Redis集群管理系统");
         DEFAULT_CONFIGS.put("sys.theme.primary", "#ff7324");

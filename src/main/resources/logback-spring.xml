@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- 引入Spring Boot的默认配置 -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <!-- 日志文件路径 -->
+    <property name="LOG_FILE" value="logs/redis-manager.log"/>
+    <property name="BACKUP_LOG_FILE" value="logs/backup/backup.log"/>
+    
+    <!-- 控制台输出 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+    
+    <!-- 主日志文件输出 - 按天滚动，保留7天 -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 日志文件命名格式 -->
+            <fileNamePattern>logs/redis-manager.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- 最多保留7天的日志 -->
+            <maxHistory>7</maxHistory>
+            <!-- 启动时清理历史日志 -->
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+    </appender>
+    
+    <!-- 备份日志文件输出 - 单独记录备份相关日志，保留30天 -->
+    <appender name="BACKUP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${BACKUP_LOG_FILE}</file>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 日志文件命名格式 -->
+            <fileNamePattern>logs/backup/backup.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- 最多保留30天的备份日志 -->
+            <maxHistory>30</maxHistory>
+            <!-- 启动时清理历史日志 -->
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+    </appender>
+    
+    <!-- 根日志级别 -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+    
+    <!-- 业务包日志级别 -->
+    <logger name="com.redis.manager" level="DEBUG"/>
+    
+    <!-- SSH客户端日志级别调整为WARN，避免频繁scan命令刷日志 -->
+    <logger name="com.redis.manager.ssh.SSHClient" level="WARN"/>
+    
+    <!-- 数据库备份服务日志 - 单独输出到备份日志文件，同时保留在控制台和主日志 -->
+    <logger name="com.redis.manager.service.DatabaseBackupService" level="DEBUG" additivity="true">
+        <appender-ref ref="BACKUP_FILE"/>
+    </logger>
+    
+</configuration>

@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="layout :: head('集群清单')"></head>
+<body>
+    <aside th:replace="layout :: sidebar"></aside>
+    
+    <main class="main-content">
+        <header th:replace="layout :: header('集群清单')"></header>
+        
+        <div class="content-container">
+            <!-- 统计卡片 -->
+            <div class="row g-4 mb-4">
+                <div class="col-md-3">
+                    <div class="stat-card primary">
+                        <div class="stat-icon">
+                            <i class="bi bi-grid-3x3-gap"></i>
+                        </div>
+                        <div class="stat-label">集群总数</div>
+                        <div class="stat-value" id="clusterCount">-</div>
+                        <div class="stat-change">
+                            <i class="bi bi-hdd-rack"></i>
+                            <span>系统记录集群</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card info">
+                        <div class="stat-icon">
+                            <i class="bi bi-memory"></i>
+                        </div>
+                        <div class="stat-label">总内存容量</div>
+                        <div class="stat-value" id="totalMaxMemory">-</div>
+                        <div class="stat-change">
+                            <i class="bi bi-hdd"></i>
+                            <span>所有集群主节点</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card success">
+                        <div class="stat-icon">
+                            <i class="bi bi-speedometer2"></i>
+                        </div>
+                        <div class="stat-label">已使用内存</div>
+                        <div class="stat-value" id="totalUsedMemory">-</div>
+                        <div class="stat-change">
+                            <i class="bi bi-bar-chart"></i>
+                            <span>实时使用率</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card warning">
+                        <div class="stat-icon">
+                            <i class="bi bi-check-circle"></i>
+                        </div>
+                        <div class="stat-label">运行中集群</div>
+                        <div class="stat-value" id="runningClusterCount">-</div>
+                        <div class="stat-change">
+                            <i class="bi bi-play-circle"></i>
+                            <span>正常运行</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 搜索栏 -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" id="searchInput" placeholder="搜索集群名称或端口..." oninput="handleFilter()">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="groupFilter" onchange="handleFilter()">
+                                <option value="">所有服务器组</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="statusFilter" onchange="handleFilter()">
+                                <option value="">所有状态</option>
+                                <option value="1">运行中</option>
+                                <option value="2">已停止</option>
+                                <option value="3">异常</option>
+                                <option value="0">创建中</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-outline-success flex-fill" onclick="exportToExcel()" title="导出Excel">
+                                    <i class="bi bi-file-earmark-excel"></i> 导出
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="loadClusterList()" title="刷新">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 集群列表 -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <h6 class="mb-0"><i class="bi bi-list-ul me-2"></i>集群详细信息</h6>
+                        <span class="badge bg-secondary" id="listBadge">0 个集群</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <!-- 列显示控制 -->
+                        <div class="dropdown">
+                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-eye"></i> 显示列
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end p-2" style="min-width: 150px;">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="colServerGroup" onchange="toggleColumn('serverGroup')">
+                                    <label class="form-check-label" for="colServerGroup">所属服务器组</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="colUsage" onchange="toggleColumn('usage')">
+                                    <label class="form-check-label" for="colUsage">使用率</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="colNodes" onchange="toggleColumn('nodes')">
+                                    <label class="form-check-label" for="colNodes">节点数</label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 每页显示数 -->
+                        <select class="form-select" id="pageSizeSelect" onchange="changePageSize()" style="width: 90px; padding: 0.25rem 0.5rem; font-size: 0.875rem; height: 31px;">
+                            <option value="10">10条</option>
+                            <option value="20">20条</option>
+                            <option value="50">50条</option>
+                            <option value="100">100条</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="clusterTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 50px;">#</th>
+                                    <th style="min-width: 200px;">集群名称</th>
+                                    <th style="width: 100px;">基础端口</th>
+                                    <th style="width: 180px;">密码</th>
+                                    <th class="col-server-group d-none" style="width: 150px;">所属服务器组</th>
+                                    <th style="width: 100px;">总内存</th>
+                                    <th style="width: 100px;">已用内存</th>
+                                    <th class="col-usage d-none" style="width: 100px;">使用率</th>
+                                    <th style="width: 90px;">状态</th>
+                                    <th class="col-nodes d-none" style="width: 90px;">节点数</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clusterTableBody">
+                                <tr>
+                                    <td colspan="10" class="text-center py-5">
+                                        <div class="spinner-border text-primary"></div>
+                                        <p class="mt-2 text-muted">加载集群列表...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- 分页组件 -->
+                    <div class="d-flex justify-content-between align-items-center p-3 border-top">
+                        <div class="text-muted small">
+                            共 <span id="totalCount">0</span> 条记录，
+                            第 <span id="currentPage">1</span> / <span id="totalPages">1</span> 页
+                        </div>
+                        <nav aria-label="集群列表分页">
+                            <ul class="pagination pagination-sm mb-0" id="pagination">
+                                <!-- 分页按钮将通过JS动态生成 -->
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <th:block th:replace="layout :: scripts"></th:block>
+    <script>
+        setActiveNav('nav-cluster-list');
+
+        let allClusters = [];
+        let filteredClusters = [];
+        let serverGroups = [];
+        let currentPage = 1;
+        let pageSize = 10;
+        let visiblePasswords = new Set();
+
+        // 列显示状态
+        let columnVisibility = {
+            serverGroup: false,
+            usage: false,
+            nodes: false
+        };
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadServerGroups();
+            loadClusterList();
+        });
+
+        // 加载服务器组列表
+        async function loadServerGroups() {
+            try {
+                const response = await axios.get('/api/groups');
+                if (response.data.code === 200) {
+                    serverGroups = response.data.data || [];
+                    const select = document.getElementById('groupFilter');
+                    serverGroups.forEach(group => {
+                        const option = document.createElement('option');
+                        option.value = group.id;
+                        option.textContent = group.name;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('加载服务器组失败:', error);
+            }
+        }
+
+        // 加载集群列表
+        async function loadClusterList() {
+            try {
+                const response = await axios.get('/api/clusters');
+                if (response.data.code === 200) {
+                    allClusters = response.data.data || [];
+                    handleFilter();
+                    updateStats(allClusters);
+                } else {
+                    showToast('加载集群列表失败: ' + response.data.message, 'error');
+                }
+            } catch (error) {
+                console.error('加载集群列表失败:', error);
+                showToast('加载集群列表失败', 'error');
+                document.getElementById('clusterTableBody').innerHTML = `
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-muted">
+                            <i class="bi bi-exclamation-circle" style="font-size: 2rem;"></i>
+                            <p class="mt-2">加载集群列表失败</p>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        // 处理过滤和分页
+        function handleFilter() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase().trim();
+            const groupId = document.getElementById('groupFilter').value;
+            const status = document.getElementById('statusFilter').value;
+            
+            filteredClusters = allClusters.filter(cluster => {
+                // 名称或端口搜索
+                if (searchText) {
+                    const nameMatch = cluster.name && cluster.name.toLowerCase().includes(searchText);
+                    // 支持按基础端口搜索（模糊匹配）
+                    const portMatch = cluster.basePort && cluster.basePort.toString().includes(searchText);
+                    // 也支持按节点端口搜索
+                    const nodePortMatch = cluster.nodes && cluster.nodes.some(node => 
+                        node.port && node.port.toString().includes(searchText)
+                    );
+                    if (!nameMatch && !portMatch && !nodePortMatch) {
+                        return false;
+                    }
+                }
+                // 服务器组过滤
+                if (groupId && cluster.serverGroupId != groupId) {
+                    return false;
+                }
+                // 状态过滤
+                if (status && cluster.status != status) {
+                    return false;
+                }
+                return true;
+            });
+            
+            currentPage = 1;
+            renderClusterList();
+        }
+
+        // 渲染集群列表
+        function renderClusterList() {
+            const total = filteredClusters.length;
+            const totalPages = Math.ceil(total / pageSize) || 1;
+            
+            // 确保当前页有效
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+            
+            // 分页数据
+            const start = (currentPage - 1) * pageSize;
+            const end = Math.min(start + pageSize, total);
+            const pageClusters = filteredClusters.slice(start, end);
+            
+            document.getElementById('listBadge').textContent = total + ' 个集群';
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('currentPage').textContent = currentPage;
+            document.getElementById('totalPages').textContent = totalPages;
+            
+            if (pageClusters.length === 0) {
+                document.getElementById('clusterTableBody').innerHTML = `
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                            <p class="mt-2">暂无集群数据</p>
+                        </td>
+                    </tr>
+                `;
+                renderPagination(totalPages);
+                return;
+            }
+
+            document.getElementById('clusterTableBody').innerHTML = pageClusters.map((cluster, index) => {
+                const nodes = cluster.nodes || [];
+                const masterNodes = nodes.filter(n => n.role === 'master' || n.nodeType === 'master');
+                
+                // 计算内存信息
+                let totalMaxMemory = 0;
+                let totalUsedMemory = 0;
+                masterNodes.forEach(node => {
+                    const maxMem = parseMemoryValue(node.maxMemory);
+                    const usedMem = parseMemoryValue(node.usedMemory);
+                    if (maxMem > 0) totalMaxMemory += maxMem;
+                    if (usedMem > 0) totalUsedMemory += usedMem;
+                });
+                
+                const usagePercent = totalMaxMemory > 0 ? Math.round((totalUsedMemory / totalMaxMemory) * 100) : 0;
+                const usageClass = usagePercent > 80 ? 'danger' : (usagePercent > 60 ? 'warning' : 'success');
+                
+                // 密码显示处理
+                const isVisible = visiblePasswords.has(cluster.id);
+                const passwordHtml = cluster.password ? 
+                    `<span class="font-monospace" id="pwd-${cluster.id}">${isVisible ? escapeHtml(cluster.password) : '******'}</span>
+                     <button class="btn btn-link btn-sm p-0 ms-1" onclick="togglePassword(${cluster.id}, '${escapeHtml(cluster.password)}')" title="${isVisible ? '隐藏' : '显示'}密码">
+                        <i class="bi bi-eye${isVisible ? '-slash' : ''}"></i>
+                     </button>` : 
+                    '<span class="text-muted">-</span>';
+                
+                // 状态标签
+                const statusMap = {
+                    0: { text: '创建中', class: 'info' },
+                    1: { text: '运行中', class: 'success' },
+                    2: { text: '已停止', class: 'secondary' },
+                    3: { text: '异常', class: 'danger' }
+                };
+                const status = statusMap[cluster.status] || { text: '未知', class: 'secondary' };
+                
+                return `
+                    <tr>
+                        <td>${start + index + 1}</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-grid-3x3-gap text-primary me-2"></i>
+                                <span class="text-wrap" style="word-break: break-all;">${escapeHtml(cluster.name)}</span>
+                            </div>
+                        </td>
+                        <td><code>${cluster.basePort || '-'}</code></td>
+                        <td>${passwordHtml}</td>
+                        <td class="col-server-group ${columnVisibility.serverGroup ? '' : 'd-none'}">
+                            <span class="badge bg-light text-dark border">
+                                <i class="bi bi-hdd-rack me-1"></i>${escapeHtml(cluster.serverGroupName || '-')}
+                            </span>
+                        </td>
+                        <td><strong>${formatMemory(totalMaxMemory)}</strong></td>
+                        <td>${formatMemory(totalUsedMemory)}</td>
+                        <td class="col-usage ${columnVisibility.usage ? '' : 'd-none'}">
+                            <div class="d-flex align-items-center">
+                                <div class="progress flex-grow-1 me-2" style="height: 6px; width: 40px;">
+                                    <div class="progress-bar bg-${usageClass}" style="width: ${usagePercent}%"></div>
+                                </div>
+                                <small class="text-${usageClass}">${usagePercent}%</small>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-${status.class}">${status.text}</span></td>
+                        <td class="col-nodes ${columnVisibility.nodes ? '' : 'd-none'}">
+                            <span class="badge bg-light text-dark">${masterNodes.length}主/${nodes.length - masterNodes.length}从</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            renderPagination(totalPages);
+        }
+
+        // 渲染分页
+        function renderPagination(totalPages) {
+            let html = '';
+            
+            // 上一页
+            html += `
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToPage(${currentPage - 1})" aria-label="上一页">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+            `;
+            
+            // 页码
+            const maxVisible = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+            
+            if (endPage - startPage < maxVisible - 1) {
+                startPage = Math.max(1, endPage - maxVisible + 1);
+            }
+            
+            if (startPage > 1) {
+                html += `<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToPage(1)">1</a></li>`;
+                if (startPage > 2) html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToPage(${i})">${i}</a>
+                </li>`;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+                html += `<li class="page-item"><a class="page-link" href="javascript:void(0)" onclick="goToPage(${totalPages})">${totalPages}</a></li>`;
+            }
+            
+            // 下一页
+            html += `
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="javascript:void(0)" onclick="goToPage(${currentPage + 1})" aria-label="下一页">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            `;
+            
+            document.getElementById('pagination').innerHTML = html;
+        }
+
+        // 跳转到指定页
+        function goToPage(page) {
+            currentPage = page;
+            renderClusterList();
+        }
+
+        // 切换每页显示数
+        function changePageSize() {
+            pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+            currentPage = 1;
+            renderClusterList();
+        }
+
+        // 切换密码显示
+        function togglePassword(clusterId, password) {
+            if (visiblePasswords.has(clusterId)) {
+                visiblePasswords.delete(clusterId);
+            } else {
+                visiblePasswords.add(clusterId);
+            }
+            renderClusterList();
+        }
+
+        // 切换列显示
+        function toggleColumn(column) {
+            columnVisibility[column] = !columnVisibility[column];
+            
+            // 更新表头
+            const headerClass = `col-${column === 'serverGroup' ? 'server-group' : column}`;
+            document.querySelectorAll('.' + headerClass).forEach(el => {
+                if (columnVisibility[column]) {
+                    el.classList.remove('d-none');
+                } else {
+                    el.classList.add('d-none');
+                }
+            });
+            
+            renderClusterList();
+        }
+
+        // 更新统计信息
+        function updateStats(clusters) {
+            document.getElementById('clusterCount').textContent = clusters.length;
+            
+            let totalMaxMemory = 0;
+            let totalUsedMemory = 0;
+            let runningCount = 0;
+            
+            clusters.forEach(cluster => {
+                if (cluster.status === 1) runningCount++;
+                const nodes = cluster.nodes || [];
+                const masterNodes = nodes.filter(n => n.role === 'master' || n.nodeType === 'master');
+                masterNodes.forEach(node => {
+                    totalMaxMemory += parseMemoryValue(node.maxMemory);
+                    totalUsedMemory += parseMemoryValue(node.usedMemory);
+                });
+            });
+            
+            document.getElementById('totalMaxMemory').textContent = formatMemory(totalMaxMemory);
+            document.getElementById('totalUsedMemory').textContent = formatMemory(totalUsedMemory);
+            document.getElementById('runningClusterCount').textContent = runningCount;
+        }
+
+        // 解析内存值（支持 MB, GB 等）
+        function parseMemoryValue(value) {
+            if (!value) return 0;
+            if (typeof value === 'number') return value;
+            const str = value.toString().toUpperCase();
+            const num = parseFloat(str);
+            if (isNaN(num)) return 0;
+            if (str.includes('GB')) return num * 1024;
+            if (str.includes('MB')) return num;
+            if (str.includes('KB')) return num / 1024;
+            return num;
+        }
+
+        // 格式化内存显示
+        function formatMemory(mb) {
+            if (!mb || mb === 0) return '-';
+            if (mb >= 1024) {
+                return (mb / 1024).toFixed(2) + ' GB';
+            }
+            return Math.round(mb) + ' MB';
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 导出Excel功能
+        function exportToExcel() {
+            // 准备导出数据（使用过滤后的数据）
+            const dataToExport = filteredClusters.length > 0 ? filteredClusters : allClusters;
+            
+            if (dataToExport.length === 0) {
+                showToast('没有数据可导出', 'warning');
+                return;
+            }
+
+            // 构建CSV内容
+            const BOM = '\uFEFF'; // UTF-8 BOM，解决中文乱码
+            const headers = ['序号', '集群名称', '基础端口', '密码', '所属服务器组', 'Redis版本', '总内存', '已用内存', '使用率', '状态', '主节点数', '从节点数', '创建时间'];
+            
+            let csvContent = BOM + headers.join(',') + '\n';
+            
+            dataToExport.forEach((cluster, index) => {
+                const nodes = cluster.nodes || [];
+                const masterNodes = nodes.filter(n => n.role === 'master' || n.nodeType === 'master');
+                const slaveNodes = nodes.filter(n => n.role !== 'master' && n.nodeType !== 'master');
+                
+                // 计算内存信息
+                let totalMaxMemory = 0;
+                let totalUsedMemory = 0;
+                masterNodes.forEach(node => {
+                    const maxMem = parseMemoryValue(node.maxMemory);
+                    const usedMem = parseMemoryValue(node.usedMemory);
+                    if (maxMem > 0) totalMaxMemory += maxMem;
+                    if (usedMem > 0) totalUsedMemory += usedMem;
+                });
+                
+                const usagePercent = totalMaxMemory > 0 ? Math.round((totalUsedMemory / totalMaxMemory) * 100) : 0;
+                
+                // 状态映射
+                const statusMap = { 0: '创建中', 1: '运行中', 2: '已停止', 3: '异常' };
+                const statusText = statusMap[cluster.status] || '未知';
+                
+                // 构建行数据（注意处理逗号和引号）
+                const row = [
+                    index + 1,
+                    escapeCsvField(cluster.name),
+                    cluster.basePort || '-',
+                    escapeCsvField(cluster.password || '-'),
+                    escapeCsvField(cluster.serverGroupName || '-'),
+                    cluster.redisVersion || '-',
+                    formatMemory(totalMaxMemory),
+                    formatMemory(totalUsedMemory),
+                    usagePercent + '%',
+                    statusText,
+                    masterNodes.length,
+                    slaveNodes.length,
+                    cluster.createTime || '-'
+                ];
+                
+                csvContent += row.join(',') + '\n';
+            });
+            
+            // 创建下载链接
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            // 生成文件名：集群清单_YYYYMMDD_HHMMSS.csv
+            const now = new Date();
+            const timestamp = now.getFullYear() + 
+                String(now.getMonth() + 1).padStart(2, '0') + 
+                String(now.getDate()).padStart(2, '0') + '_' +
+                String(now.getHours()).padStart(2, '0') + 
+                String(now.getMinutes()).padStart(2, '0') + 
+                String(now.getSeconds()).padStart(2, '0');
+            
+            link.href = url;
+            link.download = `集群清单_${timestamp}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            showToast(`成功导出 ${dataToExport.length} 条集群记录`, 'success');
+        }
+
+        // CSV字段转义（处理逗号、引号和换行）
+        function escapeCsvField(field) {
+            if (field === null || field === undefined) return '';
+            const str = String(field);
+            // 如果包含逗号、引号或换行，需要用引号包裹，并将内部引号替换为两个引号
+            if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        }
+    </script>
+</body>
+</html>

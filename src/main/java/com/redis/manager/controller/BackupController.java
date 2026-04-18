@@ -1,5 +1,6 @@
 package com.redis.manager.controller;
 
+import com.redis.manager.config.BackupProperties;
 import com.redis.manager.dto.PageResult;
 import com.redis.manager.dto.Result;
 import com.redis.manager.service.DatabaseBackupService;
@@ -32,6 +33,9 @@ public class BackupController {
     @Autowired
     private DatabaseBackupService backupService;
 
+    @Autowired
+    private BackupProperties backupProperties;
+
     /**
      * 手动触发数据库备份
      * 
@@ -47,6 +51,45 @@ public class BackupController {
         } else {
             return Result.error(500, result);
         }
+    }
+
+    /**
+     * 供外部 Crontab 调用的系统备份接口
+     * <p>
+     * 使用方式（Linux Crontab）：
+     * 0 2 * * * curl -X POST "http://localhost:8080/api/backup/cron?token=YOUR_TOKEN"
+     * 
+     * @param token 安全验证 Token（需与配置 redis.manager.backup.api-token 一致）
+     * @return 备份结果（纯文本，便于日志记录）
+     */
+    @PostMapping("/cron")
+    @ResponseBody
+    public String cronBackup(@RequestParam("token") String token) {
+        logger.info("【Crontab请求】收到外部Crontab备份请求");
+        
+        // 检查是否启用了 Crontab 模式
+        if (!backupProperties.isUseCronJob()) {
+            logger.warn("【Crontab请求】当前未启用 Crontab 模式，请设置 redis.manager.backup.use-cron-job=true");
+            return "ERROR: 未启用 Crontab 模式";
+        }
+        
+        // 检查 Token 是否配置
+        if (!org.springframework.util.StringUtils.hasText(backupProperties.getApiToken())) {
+            logger.error("【Crontab请求】API Token 未配置，请设置 redis.manager.backup.api-token");
+            return "ERROR: API Token 未配置";
+        }
+        
+        // 执行备份
+        String result = backupService.triggerSystemBackup(token);
+        
+        // 记录结果到日志
+        if (result.startsWith("SUCCESS")) {
+            logger.info("【Crontab备份】执行结果: {}", result);
+        } else {
+            logger.error("【Crontab备份】执行结果: {}", result);
+        }
+        
+        return result;
     }
 
     /**

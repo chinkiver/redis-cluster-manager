@@ -40,6 +40,11 @@ public class PageController {
         return "clusters";
     }
 
+    @GetMapping("/clusters/list")
+    public String clusterList() {
+        return "cluster-list";
+    }
+
     @GetMapping("/clusters/{clusterId}")
     public String clusterDetail(@PathVariable Long clusterId, Model model) {
         model.addAttribute("clusterId", clusterId);

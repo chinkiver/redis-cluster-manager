@@ -3024,6 +3024,112 @@ public class ClusterService {
     }
 
     /**
+     * 获取节点完整配置（CONFIG GET *）
+     */
+    public Result<String> getNodeConfigAll(Long clusterId, String ip, Integer port) {
+        logger.info("开始获取节点完整配置: clusterId={}, ip={}, port={}", clusterId, ip, port);
+        
+        Optional<RedisCluster> opt = clusterRepository.findByIdWithNodes(clusterId);
+        if (!opt.isPresent()) {
+            logger.warn("集群不存在: clusterId={}", clusterId);
+            return Result.error("集群不存在");
+        }
+
+        RedisCluster cluster = opt.get();
+        String password = cluster.getPassword();
+
+        try {
+            List<ClusterNode> nodes = cluster.getNodes();
+            ClusterNode targetNode = nodes.stream()
+                    .filter(n -> n.getIp().equals(ip) && n.getPort().equals(port))
+                    .findFirst()
+                    .orElse(null);
+            
+            if (targetNode == null) {
+                logger.warn("节点不存在: {}:{} 在集群 {} 中未找到", ip, port, clusterId);
+                return Result.error("节点不存在");
+            }
+
+            Server server = getServerForNode(cluster, targetNode);
+            if (server == null) {
+                logger.error("无法获取SSH连接信息: 节点 {}:{}", ip, port);
+                return Result.error("无法获取SSH连接信息");
+            }
+
+            SSHClient ssh = new SSHClient(server.getIp(), server.getSshPort(),
+                    server.getSshUser(), server.getSshPassword());
+            ssh.connect();
+
+            try {
+                String authCmd = (password != null && !password.isEmpty()) ? " -a '" + password + "'" : "";
+                // 执行 CONFIG GET * 获取所有配置
+                String command = String.format("redis-cli -h %s -p %d%s config get '*' 2>&1",
+                        ip, port, authCmd);
+                logger.info("执行命令获取完整配置: {}", command.replace(password != null ? password : "", "***"));
+                
+                SSHClient.SSHResult result = ssh.executeCommand(command);
+                String output = result.getStdout();
+                String stderr = result.getStderr();
+                int exitCode = result.getExitCode();
+                
+                logger.debug("命令返回: exitCode={}, stdout长度={}, stderr={}", exitCode, output.length(), stderr);
+                
+                // 检查是否需要密码
+                if (output.contains("NOAUTH") || output.contains("authentication required") || 
+                    stderr.contains("NOAUTH") || stderr.contains("authentication required")) {
+                    logger.error("获取配置失败: 需要密码或密码错误");
+                    return Result.error("需要密码或密码错误");
+                }
+                
+                // 检查是否有错误
+                if (exitCode != 0 && !output.isEmpty()) {
+                    logger.warn("命令返回非零退出码，但stdout有内容，继续处理");
+                }
+                
+                // 如果输出为空但有错误信息
+                if (output.isEmpty() && !stderr.isEmpty()) {
+                    logger.error("获取配置失败: {}", stderr);
+                    return Result.error("获取失败: " + stderr);
+                }
+                
+                // 格式化输出，使其更易读
+                String formattedOutput = formatConfigOutput(output);
+                
+                return Result.success(formattedOutput);
+            } finally {
+                ssh.disconnect();
+                logger.debug("断开SSH连接");
+            }
+        } catch (Exception e) {
+            logger.error("获取节点完整配置失败: clusterId={}, ip={}, port={}, 错误: {}", 
+                    clusterId, ip, port, e.getMessage(), e);
+            return Result.error("获取失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 格式化配置输出，每行显示一个配置项和值
+     */
+    private String formatConfigOutput(String rawOutput) {
+        if (rawOutput == null || rawOutput.trim().isEmpty()) {
+            return "无配置数据";
+        }
+        
+        StringBuilder formatted = new StringBuilder();
+        String[] lines = rawOutput.split("\n");
+        
+        for (int i = 0; i < lines.length; i += 2) {
+            String key = lines[i].trim();
+            String value = (i + 1 < lines.length) ? lines[i + 1].trim() : "";
+            if (!key.isEmpty()) {
+                formatted.append(String.format("%-40s = %s\n", key, value));
+            }
+        }
+        
+        return formatted.toString();
+    }
+
+    /**
      * 修改集群名称
      */
     @Transactional
